@@ -1,0 +1,259 @@
+{
+  "faction": "rebels",
+  "nowHours": 0,
+  "headquartersId": "tatooine",
+  "resources": {
+    "credits": 1200,
+    "materials": 300,
+    "intel": 5
+  },
+  "personnel": [
+    {
+      "id": "agent-luke",
+      "name": "Luke Skywalker",
+      "role": "agent",
+      "status": "idle",
+      "locationId": "tatooine"
+    },
+    {
+      "id": "agent-leia",
+      "name": "Leia Organa",
+      "role": "diplomat",
+      "status": "idle",
+      "locationId": "corellia"
+    }
+  ],
+  "materials": [
+    { "id": "blaster-parts", "name": "Blaster Parts", "quantity": 8 },
+    { "id": "med-kits", "name": "Med Kits", "quantity": 5 },
+    { "id": "ship-fuel", "name": "Ship Fuel", "quantity": 12 }
+  ],
+  "locations": [
+    {
+      "id": "coruscant",
+      "name": "Coruscant",
+      "tags": ["core", "capital"],
+      "missionPlanIds": ["raise-credits"],
+      "sector": { "x": 0, "y": 0 },
+      "position": { "x": 30, "y": 45 },
+      "immutable": {
+        "secrecy": 10,
+        "resources": 95,
+        "willingness": 20
+      },
+      "mutable": {
+        "support": 15,
+        "suspicion": 80,
+        "productionCapacity": 90
+      },
+      "subLocations": [
+        { "id": "coru-senate", "name": "Senate District", "position": { "x": 32, "y": 48 } },
+        { "id": "coru-industrial", "name": "Industrial Ring", "position": { "x": 26, "y": 40 } }
+      ]
+    },
+    {
+      "id": "corellia",
+      "name": "Corellia",
+      "tags": ["core", "shipyards"],
+      "missionPlanIds": [],
+      "sector": { "x": 0, "y": 0 },
+      "position": { "x": 55, "y": 25 },
+      "immutable": {
+        "secrecy": 35,
+        "resources": 80,
+        "willingness": 45
+      },
+      "mutable": {
+        "support": 40,
+        "suspicion": 35,
+        "productionCapacity": 75
+      },
+      "subLocations": [
+        { "id": "cor-shipyards", "name": "Shipyards", "position": { "x": 58, "y": 27 } }
+      ]
+    },
+    {
+      "id": "bespin",
+      "name": "Bespin",
+      "tags": ["mid", "tibanna"],
+      "missionPlanIds": [],
+      "sector": { "x": 1, "y": 0 },
+      "position": { "x": 20, "y": 15 },
+      "immutable": {
+        "secrecy": 55,
+        "resources": 70,
+        "willingness": 35
+      },
+      "mutable": {
+        "support": 30,
+        "suspicion": 25,
+        "productionCapacity": 50
+      },
+      "subLocations": [
+        { "id": "bespin-city", "name": "Cloud City", "position": { "x": 22, "y": 18 } }
+      ]
+    },
+    {
+      "id": "tatooine",
+      "name": "Tatooine",
+      "tags": ["rim", "smugglers"],
+      "missionPlanIds": ["smuggle-supplies", "search-allies"],
+      "sector": { "x": 1, "y": 0 },
+      "position": { "x": 70, "y": 60 },
+      "immutable": {
+        "secrecy": 65,
+        "resources": 25,
+        "willingness": 55
+      },
+      "mutable": {
+        "support": 50,
+        "suspicion": 20,
+        "productionCapacity": 30
+      },
+      "subLocations": [
+        { "id": "tat-mos-eisley", "name": "Mos Eisley", "position": { "x": 72, "y": 63 } },
+        { "id": "tat-mos-espa", "name": "Mos Espa", "position": { "x": 66, "y": 58 } }
+      ]
+    },
+    {
+      "id": "sullust",
+      "name": "Sullust",
+      "tags": ["mid", "foundries"],
+      "missionPlanIds": ["gather-materials"],
+      "sector": { "x": 1, "y": 0 },
+      "position": { "x": 45, "y": 80 },
+      "immutable": {
+        "secrecy": 40,
+        "resources": 85,
+        "willingness": 60
+      },
+      "mutable": {
+        "support": 55,
+        "suspicion": 30,
+        "productionCapacity": 65
+      },
+      "subLocations": [
+        { "id": "sul-capital", "name": "Sullust Capital", "position": { "x": 47, "y": 78 } }
+      ]
+    }
+  ],
+  "missionPlans": [
+    {
+      "id": "smuggle-supplies",
+      "name": "Smuggle Supplies",
+      "summary": "Move contraband to keep the network supplied.",
+      "type": "logistics",
+      "availability": { "type": "location", "locationId": "tatooine" },
+      "requiredRoles": ["agent"],
+      "requiredMaterials": [
+        { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
+      ],
+      "durationHours": 24,
+      "baseSuccessChance": 0.7,
+      "rewards": {
+        "credits": 400,
+        "materials": 150,
+        "intel": 1
+      },
+      "penalties": {
+        "credits": -100,
+        "materials": -50,
+        "intel": 0
+      }
+    },
+    {
+      "id": "raise-credits",
+      "name": "Raise Credits",
+      "summary": "Leverage contacts for funding and influence.",
+      "type": "logistics",
+      "availability": { "type": "location", "locationId": "coruscant" },
+      "requiredRoles": ["diplomat"],
+      "requiredMaterials": [
+        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
+      ],
+      "durationHours": 12,
+      "baseSuccessChance": 0.6,
+      "rewards": {
+        "credits": 600,
+        "materials": 50,
+        "intel": 1
+      },
+      "penalties": {
+        "credits": -150,
+        "materials": -20,
+        "intel": 0
+      }
+    },
+    {
+      "id": "search-allies",
+      "name": "Search for Allies",
+      "summary": "Scout the Rim for sympathetic recruits.",
+      "type": "logistics",
+      "availability": { "type": "location", "locationId": "tatooine" },
+      "requiredRoles": ["agent"],
+      "requiredMaterials": [
+        { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
+      ],
+      "durationHours": 16,
+      "baseSuccessChance": 0.7,
+      "rewards": {
+        "credits": 200,
+        "materials": 80,
+        "intel": 2
+      },
+      "penalties": {
+        "credits": -60,
+        "materials": -40,
+        "intel": 0
+      }
+    },
+    {
+      "id": "gather-materials",
+      "name": "Gather Materials",
+      "summary": "Secure raw goods and spare parts.",
+      "type": "gather-materials",
+      "availability": { "type": "location", "locationId": "sullust" },
+      "requiredRoles": ["agent"],
+      "requiredMaterials": [
+        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
+      ],
+      "durationHours": 18,
+      "baseSuccessChance": 0.75,
+      "rewards": {
+        "credits": 200,
+        "materials": 250,
+        "intel": 1
+      },
+      "penalties": {
+        "credits": -50,
+        "materials": -80,
+        "intel": 0
+      }
+    },
+    {
+      "id": "galaxy-wide-aid",
+      "name": "Galaxy-wide Aid",
+      "summary": "Coordinate relief and gain goodwill across sectors.",
+      "type": "logistics",
+      "availability": { "type": "global" },
+      "requiredRoles": ["diplomat"],
+      "requiredMaterials": [
+        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
+      ],
+      "durationHours": 20,
+      "baseSuccessChance": 0.65,
+      "rewards": {
+        "credits": 300,
+        "materials": 120,
+        "intel": 2
+      },
+      "penalties": {
+        "credits": -80,
+        "materials": -60,
+        "intel": 0
+      }
+    }
+  ],
+  "missions": [],
+  "travel": []
+}
