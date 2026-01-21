@@ -19,7 +19,7 @@
   "locations": [
     {
       "id": "corellia",
-      "mutable": { "support": 55, "suspicion": 30 }
+      "attributes": { "resistance": 55, "customsScrutiny": 45 }
     },
     {
       "id": "kessel",
@@ -28,15 +28,14 @@
       "missionPlanIds": ["kessel-intel"],
       "sector": { "x": 1, "y": 1 },
       "position": { "x": 85, "y": 35 },
-      "immutable": {
-        "secrecy": 70,
-        "resources": 65,
-        "willingness": 25
-      },
-      "mutable": {
-        "support": 15,
-        "suspicion": 60,
-        "productionCapacity": 40
+      "attributes": {
+        "resistance": 15,
+        "healthcareFacilities": 20,
+        "techLevel": 45,
+        "populationDensity": 35,
+        "customsScrutiny": 70,
+        "patrolFrequency": 60,
+        "garrisonStrength": 55
       }
     }
   ],

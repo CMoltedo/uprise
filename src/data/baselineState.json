@@ -36,15 +36,14 @@
       "missionPlanIds": ["raise-credits"],
       "sector": { "x": 0, "y": 0 },
       "position": { "x": 30, "y": 45 },
-      "immutable": {
-        "secrecy": 10,
-        "resources": 95,
-        "willingness": 20
-      },
-      "mutable": {
-        "support": 15,
-        "suspicion": 80,
-        "productionCapacity": 90
+      "attributes": {
+        "resistance": 20,
+        "healthcareFacilities": 75,
+        "techLevel": 95,
+        "populationDensity": 95,
+        "customsScrutiny": 85,
+        "patrolFrequency": 90,
+        "garrisonStrength": 95
       },
       "subLocations": [
         { "id": "coru-senate", "name": "Senate District", "position": { "x": 32, "y": 48 } },
@@ -58,15 +57,14 @@
       "missionPlanIds": [],
       "sector": { "x": 0, "y": 0 },
       "position": { "x": 55, "y": 25 },
-      "immutable": {
-        "secrecy": 35,
-        "resources": 80,
-        "willingness": 45
-      },
-      "mutable": {
-        "support": 40,
-        "suspicion": 35,
-        "productionCapacity": 75
+      "attributes": {
+        "resistance": 45,
+        "healthcareFacilities": 70,
+        "techLevel": 85,
+        "populationDensity": 70,
+        "customsScrutiny": 55,
+        "patrolFrequency": 60,
+        "garrisonStrength": 65
       },
       "subLocations": [
         { "id": "cor-shipyards", "name": "Shipyards", "position": { "x": 58, "y": 27 } }
@@ -79,15 +77,14 @@
       "missionPlanIds": [],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 20, "y": 15 },
-      "immutable": {
-        "secrecy": 55,
-        "resources": 70,
-        "willingness": 35
-      },
-      "mutable": {
-        "support": 30,
-        "suspicion": 25,
-        "productionCapacity": 50
+      "attributes": {
+        "resistance": 35,
+        "healthcareFacilities": 60,
+        "techLevel": 70,
+        "populationDensity": 40,
+        "customsScrutiny": 30,
+        "patrolFrequency": 25,
+        "garrisonStrength": 35
       },
       "subLocations": [
         { "id": "bespin-city", "name": "Cloud City", "position": { "x": 22, "y": 18 } }
@@ -100,15 +97,14 @@
       "missionPlanIds": ["smuggle-supplies", "search-allies"],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 70, "y": 60 },
-      "immutable": {
-        "secrecy": 65,
-        "resources": 25,
-        "willingness": 55
-      },
-      "mutable": {
-        "support": 50,
-        "suspicion": 20,
-        "productionCapacity": 30
+      "attributes": {
+        "resistance": 55,
+        "healthcareFacilities": 35,
+        "techLevel": 40,
+        "populationDensity": 30,
+        "customsScrutiny": 25,
+        "patrolFrequency": 30,
+        "garrisonStrength": 20
       },
       "subLocations": [
         { "id": "tat-mos-eisley", "name": "Mos Eisley", "position": { "x": 72, "y": 63 } },
@@ -122,15 +118,14 @@
       "missionPlanIds": ["gather-materials"],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 45, "y": 80 },
-      "immutable": {
-        "secrecy": 40,
-        "resources": 85,
-        "willingness": 60
-      },
-      "mutable": {
-        "support": 55,
-        "suspicion": 30,
-        "productionCapacity": 65
+      "attributes": {
+        "resistance": 50,
+        "healthcareFacilities": 55,
+        "techLevel": 80,
+        "populationDensity": 45,
+        "customsScrutiny": 40,
+        "patrolFrequency": 45,
+        "garrisonStrength": 55
       },
       "subLocations": [
         { "id": "sul-capital", "name": "Sullust Capital", "position": { "x": 47, "y": 78 } }

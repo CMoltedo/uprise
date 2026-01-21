@@ -443,14 +443,17 @@ export const App = () => {
                 {location.position.x},{location.position.y})
               </div>
               <div className="meta">
-                Secrecy {location.immutable.secrecy} · Resources{" "}
-                {location.immutable.resources} · Willingness{" "}
-                {location.immutable.willingness}
+                Resistance {location.attributes.resistance} · Healthcare{" "}
+                {location.attributes.healthcareFacilities} · Tech{" "}
+                {location.attributes.techLevel}
               </div>
               <div className="meta">
-                Support {location.mutable.support} · Suspicion{" "}
-                {location.mutable.suspicion} · Production{" "}
-                {location.mutable.productionCapacity}
+                Pop density {location.attributes.populationDensity} · Customs{" "}
+                {location.attributes.customsScrutiny}
+              </div>
+              <div className="meta">
+                Patrols {location.attributes.patrolFrequency} · Garrison{" "}
+                {location.attributes.garrisonStrength}
               </div>
             </li>
           ))}

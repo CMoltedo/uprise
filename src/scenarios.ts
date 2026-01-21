@@ -58,13 +58,9 @@ const mergeLocation = (
   missionPlanIds: override.missionPlanIds ?? current.missionPlanIds,
   sector: override.sector ?? current.sector,
   position: override.position ?? current.position,
-  immutable: {
-    ...current.immutable,
-    ...override.immutable,
-  },
-  mutable: {
-    ...current.mutable,
-    ...override.mutable,
+  attributes: {
+    ...current.attributes,
+    ...override.attributes,
   },
   subLocations: override.subLocations ?? current.subLocations,
 });

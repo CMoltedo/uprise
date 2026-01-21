@@ -32,15 +32,14 @@ export interface Location {
     x: number;
     y: number;
   };
-  immutable: {
-    secrecy: number;
-    resources: number;
-    willingness: number;
-  };
-  mutable: {
-    support: number;
-    suspicion: number;
-    productionCapacity: number;
+  attributes: {
+    resistance: number;
+    healthcareFacilities: number;
+    techLevel: number;
+    populationDensity: number;
+    customsScrutiny: number;
+    patrolFrequency: number;
+    garrisonStrength: number;
   };
   subLocations?: Array<{
     id: string;
