@@ -1,11 +1,14 @@
 import type {
   GameState,
   MaterialItem,
+  MissionEvent,
+  TravelEvent,
   MissionInstance,
   MissionPlan,
   MissionMaterialRequirement,
   Personnel,
   PersonnelRole,
+  PersonnelStatus,
   ResourceBundle,
   TravelAssignment,
 } from "./models.js";
@@ -200,12 +203,23 @@ export const assignTravel = (
     startedAtHours: state.nowHours,
   };
 
+  const event: TravelEvent = {
+    id: `event-${Date.now()}`,
+    kind: "travel",
+    personnelId,
+    fromLocationId: person.locationId,
+    toLocationId,
+    status: "started",
+    atHours: state.nowHours,
+  };
+
   return {
     ...state,
     personnel: state.personnel.map((item) =>
       item.id === personnelId ? { ...item, status: "traveling" } : item,
     ),
     travel: [...state.travel, travel],
+    eventLog: [...state.eventLog, event],
   };
 };
 
@@ -225,6 +239,7 @@ const resolveMission = (
   const rewards = success ? plan.rewards : plan.penalties ?? DEFAULT_RESOURCES;
   const updatedResources = mergeResources(state.resources, rewards);
 
+  const nextStatus: PersonnelStatus = success ? "idle" : "wounded";
   const updatedPersonnel = state.personnel.map((person) => {
     if (!mission.assignedPersonnelIds.includes(person.id)) {
       return person;
@@ -232,7 +247,7 @@ const resolveMission = (
 
     return {
       ...person,
-      status: success ? "idle" : "wounded",
+      status: nextStatus,
     };
   });
 
@@ -242,6 +257,18 @@ const resolveMission = (
     remainingHours: 0,
   };
 
+  const event: MissionEvent = {
+    id: `event-${Date.now()}`,
+    kind: "mission",
+    missionId: mission.id,
+    planId: mission.planId,
+    status: updatedMission.status,
+    resolvedAtHours: state.nowHours,
+    success,
+    personnelIds: [...mission.assignedPersonnelIds],
+    rewardsApplied: rewards,
+  };
+
   return {
     ...state,
     resources: updatedResources,
@@ -249,6 +276,7 @@ const resolveMission = (
     missions: state.missions.map((item) =>
       item.id === mission.id ? updatedMission : item,
     ),
+    eventLog: [...state.eventLog, event],
   };
 };
 
@@ -282,6 +310,15 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     for (const assignment of nextState.travel) {
       const remaining = assignment.remainingHours - hours;
       if (remaining <= 0) {
+        const arrivalEvent: TravelEvent = {
+          id: `event-${Date.now()}`,
+          kind: "travel",
+          personnelId: assignment.personnelId,
+          fromLocationId: assignment.fromLocationId,
+          toLocationId: assignment.toLocationId,
+          status: "arrived",
+          atHours: nextState.nowHours,
+        };
         nextState = {
           ...nextState,
           personnel: nextState.personnel.map((person) =>
@@ -294,6 +331,7 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
               : person,
           ),
           travel: nextState.travel.filter((item) => item.id !== assignment.id),
+          eventLog: [...nextState.eventLog, arrivalEvent],
         };
       } else {
         nextState = {

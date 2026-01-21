@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { advanceTime, assignPersonnelToMission, assignTravel } from "../engine.js";
 import type { GameState } from "../models.js";
-import sampleState from "../data/sampleState.json";
+import baselineState from "../data/baselineState.json";
+import scenarioOverrides from "../data/scenarioOverrides.json";
 import { SPEEDS, createHourAccumulator, formatInUniverseTime } from "../time.js";
+import { buildScenario } from "../scenarios.js";
+import type { ScenarioOverrides } from "../scenarios.js";
 
 const formatResources = (state: GameState) =>
   `Cr ${state.resources.credits} · Intel ${state.resources.intel}`;
 
 export const App = () => {
-  const [state, setState] = useState<GameState>(() =>
-    JSON.parse(JSON.stringify(sampleState)),
-  );
-  const [selectedLocationId, setSelectedLocationId] =
-    useState<string>("global");
+  const initialScenario = (() => {
+    const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
+    return buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+  })();
+
+  const [state, setState] = useState<GameState>(() => initialScenario);
   const [speedIndex, setSpeedIndex] = useState<number>(2);
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
-    sampleState.missionPlans[0]?.id ?? "",
+    initialScenario.missionPlans[0]?.id ?? "",
   );
   const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>(
     [],
@@ -28,44 +32,67 @@ export const App = () => {
     () => state.missionPlans.find((plan) => plan.id === selectedPlanId),
     [state.missionPlans, selectedPlanId],
   );
-  const selectedLocation = useMemo(
-    () => state.locations.find((location) => location.id === selectedLocationId),
-    [state.locations, selectedLocationId],
+  const planById = useMemo(
+    () => new Map(state.missionPlans.map((plan) => [plan.id, plan])),
+    [state.missionPlans],
   );
-  const availablePlans = useMemo(() => {
-    if (selectedLocationId === "global") {
-      return state.missionPlans.filter(
-        (plan) => plan.availability.type === "global",
-      );
+  const selectedPersonnel = useMemo(
+    () =>
+      selectedPersonnelIds
+        .map((id) => state.personnel.find((person) => person.id === id))
+        .filter((person): person is NonNullable<typeof person> => Boolean(person)),
+    [selectedPersonnelIds, state.personnel],
+  );
+  const selectedPersonnelLocationId = useMemo(() => {
+    if (selectedPersonnel.length === 0) {
+      return null;
     }
+    const unique = new Set(selectedPersonnel.map((person) => person.locationId));
+    if (unique.size !== 1) {
+      return "mixed";
+    }
+    return selectedPersonnel[0]?.locationId ?? null;
+  }, [selectedPersonnel]);
+  const availablePlans = useMemo(() => {
+    if (!selectedPersonnelLocationId || selectedPersonnelLocationId === "mixed") {
+      return [];
+    }
+    const selectedLocation = state.locations.find(
+      (location) => location.id === selectedPersonnelLocationId,
+    );
     if (!selectedLocation) {
       return [];
     }
-    if (selectedLocation.missionPlanIds?.length) {
-      return state.missionPlans.filter((plan) =>
-        selectedLocation.missionPlanIds?.includes(plan.id),
-      );
-    }
-    return state.missionPlans.filter((plan) => {
-      if (plan.availability.type === "location") {
-        return plan.availability.locationId === selectedLocation.id;
-      }
-      return plan.availability.type === "global";
-    });
-  }, [state.missionPlans, selectedLocation, selectedLocationId]);
+    const locationPlans = selectedLocation.missionPlanIds?.length
+      ? state.missionPlans.filter((plan) =>
+          selectedLocation.missionPlanIds?.includes(plan.id),
+        )
+      : state.missionPlans.filter((plan) => {
+          if (plan.availability.type === "location") {
+            return plan.availability.locationId === selectedLocation.id;
+          }
+          return false;
+        });
+    const globalPlans = state.missionPlans.filter(
+      (plan) => plan.availability.type === "global",
+    );
+    return [...locationPlans, ...globalPlans];
+  }, [state.missionPlans, selectedPersonnelLocationId, state.locations]);
   const personnelById = useMemo(
     () => new Map(state.personnel.map((person) => [person.id, person])),
     [state.personnel],
   );
   const [travelPersonnelId, setTravelPersonnelId] = useState<string>(
-    sampleState.personnel[0]?.id ?? "",
+    initialScenario.personnel[0]?.id ?? "",
   );
   const [travelDestinationId, setTravelDestinationId] = useState<string>(
-    sampleState.locations[0]?.id ?? "",
+    initialScenario.locations[0]?.id ?? "",
   );
   const [travelHours, setTravelHours] = useState<number>(12);
   const missionListRows = Math.max(4, availablePlans.length);
-  const timeAccumulatorRef = useRef(createHourAccumulator(SPEEDS[2]));
+  const timeAccumulatorRef = useRef(
+    createHourAccumulator(SPEEDS[2], initialScenario.nowHours),
+  );
 
   const handleAssignSample = () => {
     try {
@@ -92,7 +119,10 @@ export const App = () => {
 
   useEffect(() => {
     const speed = SPEEDS[speedIndex] ?? SPEEDS[2];
-    timeAccumulatorRef.current.setSpeed(speed);
+    setState((prev) => {
+      timeAccumulatorRef.current.setSpeed(speed, prev.nowHours);
+      return prev;
+    });
     const interval = setInterval(() => {
       setState((prev) => {
         const hoursToAdvance = timeAccumulatorRef.current.tick(prev.nowHours);
@@ -131,7 +161,7 @@ export const App = () => {
     <div className="page">
       <header className="header">
         <div>
-          <h1>Rebellion Loop</h1>
+          <h1>Uprise</h1>
           <p>Faction: {state.faction}</p>
         </div>
         <div className="resources">
@@ -242,23 +272,40 @@ export const App = () => {
         </div>
 
         <div className="card">
-          <h2>Mission Assignment</h2>
+          <h2>Assignment Planning</h2>
           <label className="field">
-            Location
+            Personnel (multi-select)
             <select
-              value={selectedLocationId}
-              onChange={(event) => setSelectedLocationId(event.target.value)}
+              multiple
+              value={selectedPersonnelIds}
+              onChange={(event) => {
+                const options = Array.from(event.target.selectedOptions);
+                setSelectedPersonnelIds(options.map((option) => option.value));
+              }}
+              size={Math.min(6, state.personnel.length)}
             >
-              <option value="global">Galaxy-wide</option>
-              {state.locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
+              {state.personnel.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name} · {person.role} · {person.status} ·{" "}
+                  {person.locationId}
                 </option>
               ))}
             </select>
           </label>
+          {selectedPersonnelIds.length === 0 ? (
+            <div className="meta">Select personnel to see assignments.</div>
+          ) : selectedPersonnelLocationId === "mixed" ? (
+            <div className="meta">Selected personnel are in different locations.</div>
+          ) : (
+            <div className="meta">
+              Assignments at{" "}
+              {state.locations.find(
+                (location) => location.id === selectedPersonnelLocationId,
+              )?.name ?? selectedPersonnelLocationId}
+            </div>
+          )}
           <label className="field">
-            Mission
+            Assignment
             <select
               value={selectedPlanId}
               onChange={(event) => setSelectedPlanId(event.target.value)}
@@ -319,30 +366,11 @@ export const App = () => {
               </div>
             </div>
           ) : (
-            <div className="meta">Select a mission to see details.</div>
+            <div className="meta">Select an assignment to see details.</div>
           )}
-          <label className="field">
-            Personnel (multi-select)
-            <select
-              multiple
-              value={selectedPersonnelIds}
-              onChange={(event) => {
-                const options = Array.from(event.target.selectedOptions);
-                setSelectedPersonnelIds(options.map((option) => option.value));
-              }}
-              size={Math.min(6, state.personnel.length)}
-            >
-              {state.personnel.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name} · {person.role} · {person.status} ·{" "}
-                  {person.locationId}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="actions">
             <button type="button" onClick={handleAssignSample}>
-              Assign mission
+              Assign
             </button>
           </div>
         </div>
@@ -360,9 +388,9 @@ export const App = () => {
       </section>
 
       <section className="card">
-        <h2>Active Missions</h2>
+        <h2>Active Assignments</h2>
         {activeMissions.length === 0 ? (
-          <p>No active missions.</p>
+          <p>No active assignments.</p>
         ) : (
           <ul>
             {activeMissions.map((mission) => (
@@ -373,6 +401,33 @@ export const App = () => {
                   .join(", ")}
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Event Log</h2>
+        {state.eventLog.length === 0 ? (
+          <p>No events yet.</p>
+        ) : (
+          <ul>
+            {state.eventLog
+              .slice()
+              .reverse()
+              .map((event) => (
+                <li key={event.id}>
+                  {event.kind === "mission"
+                    ? `${planById.get(event.planId)?.name ?? event.planId} · ${
+                        event.success ? "success" : "failed"
+                      } · ${formatInUniverseTime(event.resolvedAtHours)}`
+                    : `${personnelById.get(event.personnelId)?.name ??
+                        event.personnelId} · travel ${
+                        event.status
+                      } · ${event.fromLocationId} → ${
+                        event.toLocationId
+                      } · ${formatInUniverseTime(event.atHours)}`}
+                </li>
+              ))}
           </ul>
         )}
       </section>

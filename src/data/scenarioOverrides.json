@@ -1,0 +1,65 @@
+{
+  "nowHours": 6,
+  "resources": {
+    "credits": 1500
+  },
+  "personnel": [
+    { "id": "agent-luke", "status": "wounded" },
+    {
+      "id": "pilot-wedge",
+      "name": "Wedge Antilles",
+      "role": "pilot",
+      "status": "idle",
+      "locationId": "corellia"
+    }
+  ],
+  "materials": [
+    { "id": "ship-fuel", "quantity": 20 }
+  ],
+  "locations": [
+    {
+      "id": "corellia",
+      "mutable": { "support": 55, "suspicion": 30 }
+    },
+    {
+      "id": "kessel",
+      "name": "Kessel",
+      "tags": ["rim", "mines"],
+      "missionPlanIds": ["kessel-intel"],
+      "sector": { "x": 1, "y": 1 },
+      "position": { "x": 85, "y": 35 },
+      "immutable": {
+        "secrecy": 70,
+        "resources": 65,
+        "willingness": 25
+      },
+      "mutable": {
+        "support": 15,
+        "suspicion": 60,
+        "productionCapacity": 40
+      }
+    }
+  ],
+  "missionPlans": [
+    {
+      "id": "kessel-intel",
+      "name": "Mine for Intel",
+      "summary": "Extract data and rumors from the spice mines.",
+      "type": "logistics",
+      "availability": { "type": "location", "locationId": "kessel" },
+      "requiredRoles": ["operative"],
+      "durationHours": 22,
+      "baseSuccessChance": 0.55,
+      "rewards": {
+        "credits": 150,
+        "materials": 120,
+        "intel": 3
+      },
+      "penalties": {
+        "credits": -120,
+        "materials": -60,
+        "intel": 0
+      }
+    }
+  ]
+}

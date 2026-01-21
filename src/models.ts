@@ -93,6 +93,32 @@ export interface MissionInstance {
   startedAtHours: number;
 }
 
+export type EventKind = "mission" | "travel";
+
+export interface MissionEvent {
+  id: string;
+  kind: "mission";
+  missionId: string;
+  planId: string;
+  status: MissionStatus;
+  resolvedAtHours: number;
+  success: boolean;
+  personnelIds: string[];
+  rewardsApplied: Partial<ResourceBundle>;
+}
+
+export interface TravelEvent {
+  id: string;
+  kind: "travel";
+  personnelId: string;
+  fromLocationId: string;
+  toLocationId: string;
+  status: "started" | "arrived";
+  atHours: number;
+}
+
+export type EventLogEntry = MissionEvent | TravelEvent;
+
 export interface TravelAssignment {
   id: string;
   personnelId: string;
@@ -119,4 +145,5 @@ export interface GameState {
   missionPlans: MissionPlan[];
   missions: MissionInstance[];
   travel: TravelAssignment[];
+  eventLog: EventLogEntry[];
 }
