@@ -13,6 +13,7 @@ body {
   padding: 24px;
   max-width: 1100px;
   margin: 0 auto;
+  position: relative;
 }
 
 .header {
@@ -57,6 +58,120 @@ ul {
   font-size: 0.85rem;
   color: #9da7b3;
   margin-top: 4px;
+}
+
+.time-indicator {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.date-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  min-width: 82px;
+  text-align: center;
+}
+
+.date-year {
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.date-icon {
+  font-size: 1rem;
+}
+
+.flash-text {
+  animation: flash-text 900ms ease-out;
+}
+
+@keyframes flash-text {
+  0% {
+    color: #facc15;
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+.date-md {
+  font-size: 0.85rem;
+  color: #9da7b3;
+}
+
+.time-dial-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: center;
+}
+
+.time-dial {
+  --dial-fill: 25%;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(
+      #22c55e var(--dial-fill),
+      #0b1220 0
+    ),
+    conic-gradient(
+      transparent 0deg,
+      transparent 89deg,
+      rgba(0, 0, 0, 0.35) 90deg,
+      transparent 91deg,
+      transparent 179deg,
+      rgba(0, 0, 0, 0.35) 180deg,
+      transparent 181deg,
+      transparent 269deg,
+      rgba(0, 0, 0, 0.35) 270deg,
+      transparent 271deg,
+      transparent 359deg,
+      rgba(0, 0, 0, 0.35) 360deg
+    );
+  border: 2px solid #30363d;
+  position: relative;
+  transition: background 200ms linear;
+  animation: dial-flash 900ms ease-out;
+}
+
+.time-dial-center {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+}
+
+.time-dial-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+@keyframes dial-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(250, 204, 21, 0);
+  }
 }
 
 .actions {
@@ -108,4 +223,41 @@ button {
 
 button:hover {
   background: #2ea043;
+}
+
+.toast-stack {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1f6feb;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 0.95rem;
+}
+
+.toast-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: #dbeafe;
 }

@@ -1,6 +1,6 @@
 export type Faction = "rebels" | "empire";
 
-export type PersonnelRole = "agent" | "diplomat" | "pilot" | "operative";
+export type PersonnelSkill = "agent" | "diplomat" | "pilot" | "operative";
 export type PersonnelStatus =
   | "idle"
   | "assigned"
@@ -14,7 +14,7 @@ export type MissionType = "logistics" | "gather-materials";
 export interface Personnel {
   id: string;
   name: string;
-  role: PersonnelRole;
+  skills: PersonnelSkill[];
   status: PersonnelStatus;
   locationId: string;
 }
@@ -23,7 +23,6 @@ export interface Location {
   id: string;
   name: string;
   tags: string[];
-  missionPlanIds?: string[];
   sector: {
     x: number;
     y: number;
@@ -58,6 +57,24 @@ export interface MaterialItem {
   tags?: string[];
 }
 
+export interface MaterialCatalogItem {
+  id: string;
+  name: string;
+  tags?: string[];
+}
+
+export interface MaterialRewardEntry {
+  materialId: string;
+  quantity: number;
+  baseChance: number;
+}
+
+export interface MaterialRewardTable {
+  id: string;
+  name: string;
+  entries: MaterialRewardEntry[];
+}
+
 export interface MissionMaterialRequirement {
   materialId: string;
   quantity: number;
@@ -65,7 +82,6 @@ export interface MissionMaterialRequirement {
 }
 
 export type MissionAvailability =
-  | { type: "location"; locationId: string }
   | { type: "global" }
   | { type: "time"; startHours: number; endHours: number };
 
@@ -74,9 +90,10 @@ export interface MissionPlan {
   name: string;
   summary: string;
   type: MissionType;
-  availability: MissionAvailability;
-  requiredRoles: PersonnelRole[];
+  availability?: MissionAvailability;
+  requiredSkills: PersonnelSkill[];
   requiredMaterials?: MissionMaterialRequirement[];
+  materialRewardTableId?: string;
   durationHours: number;
   baseSuccessChance: number;
   rewards: Partial<ResourceBundle>;
@@ -86,10 +103,32 @@ export interface MissionPlan {
 export interface MissionInstance {
   id: string;
   planId: string;
+  locationId: string;
   assignedPersonnelIds: string[];
   status: MissionStatus;
   remainingHours: number;
   startedAtHours: number;
+}
+
+export interface MissionTypeConfig {
+  type: MissionType;
+  defaultMaterialRewardTableId?: string;
+}
+
+export interface LocationAssignment {
+  id: string;
+  locationId: string;
+  planId: string;
+  appearanceChance: number;
+  windowHours: number;
+}
+
+export interface MissionOffer {
+  id: string;
+  planId: string;
+  locationId: string;
+  createdAtHours: number;
+  expiresAtHours: number;
 }
 
 export type EventKind = "mission" | "travel";
@@ -104,6 +143,7 @@ export interface MissionEvent {
   success: boolean;
   personnelIds: string[];
   rewardsApplied: Partial<ResourceBundle>;
+  locationId: string;
 }
 
 export interface TravelEvent {
@@ -114,6 +154,7 @@ export interface TravelEvent {
   toLocationId: string;
   status: "started" | "arrived";
   atHours: number;
+  travelHours?: number;
 }
 
 export type EventLogEntry = MissionEvent | TravelEvent;
@@ -138,11 +179,16 @@ export interface GameState {
   nowHours: number;
   headquartersId: string;
   resources: ResourceBundle;
+  materialCatalog: MaterialCatalogItem[];
   personnel: Personnel[];
   materials: MaterialItem[];
+  materialRewardTables: MaterialRewardTable[];
+  missionTypeConfigs: MissionTypeConfig[];
   locations: Location[];
   missionPlans: MissionPlan[];
   missions: MissionInstance[];
+  locationAssignments: LocationAssignment[];
+  missionOffers: MissionOffer[];
   travel: TravelAssignment[];
   eventLog: EventLogEntry[];
 }

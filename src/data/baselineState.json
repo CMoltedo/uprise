@@ -7,18 +7,23 @@
     "materials": 300,
     "intel": 5
   },
+  "materialCatalog": [
+    { "id": "blaster-parts", "name": "Blaster Parts", "tags": ["weapon"] },
+    { "id": "med-kits", "name": "Med Kits", "tags": ["medical"] },
+    { "id": "ship-fuel", "name": "Ship Fuel", "tags": ["logistics"] }
+  ],
   "personnel": [
     {
       "id": "agent-luke",
       "name": "Luke Skywalker",
-      "role": "agent",
+      "skills": ["agent", "pilot"],
       "status": "idle",
       "locationId": "tatooine"
     },
     {
       "id": "agent-leia",
       "name": "Leia Organa",
-      "role": "diplomat",
+      "skills": ["diplomat", "operative"],
       "status": "idle",
       "locationId": "corellia"
     }
@@ -28,12 +33,40 @@
     { "id": "med-kits", "name": "Med Kits", "quantity": 5 },
     { "id": "ship-fuel", "name": "Ship Fuel", "quantity": 12 }
   ],
+  "materialRewardTables": [
+    {
+      "id": "contraband-cache",
+      "name": "Contraband Cache",
+      "entries": [
+        { "materialId": "blaster-parts", "quantity": 2, "baseChance": 0.6 },
+        { "materialId": "ship-fuel", "quantity": 1, "baseChance": 0.4 }
+      ]
+    },
+    {
+      "id": "medical-stash",
+      "name": "Medical Stash",
+      "entries": [
+        { "materialId": "med-kits", "quantity": 2, "baseChance": 0.7 }
+      ]
+    },
+    {
+      "id": "industrial-find",
+      "name": "Industrial Find",
+      "entries": [
+        { "materialId": "blaster-parts", "quantity": 3, "baseChance": 0.5 },
+        { "materialId": "ship-fuel", "quantity": 2, "baseChance": 0.35 }
+      ]
+    }
+  ],
+  "missionTypeConfigs": [
+    { "type": "logistics", "defaultMaterialRewardTableId": "contraband-cache" },
+    { "type": "gather-materials", "defaultMaterialRewardTableId": "industrial-find" }
+  ],
   "locations": [
     {
       "id": "coruscant",
       "name": "Coruscant",
       "tags": ["core", "capital"],
-      "missionPlanIds": ["raise-credits"],
       "sector": { "x": 0, "y": 0 },
       "position": { "x": 30, "y": 45 },
       "attributes": {
@@ -54,7 +87,6 @@
       "id": "corellia",
       "name": "Corellia",
       "tags": ["core", "shipyards"],
-      "missionPlanIds": [],
       "sector": { "x": 0, "y": 0 },
       "position": { "x": 55, "y": 25 },
       "attributes": {
@@ -74,7 +106,6 @@
       "id": "bespin",
       "name": "Bespin",
       "tags": ["mid", "tibanna"],
-      "missionPlanIds": [],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 20, "y": 15 },
       "attributes": {
@@ -94,7 +125,6 @@
       "id": "tatooine",
       "name": "Tatooine",
       "tags": ["rim", "smugglers"],
-      "missionPlanIds": ["smuggle-supplies", "search-allies"],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 70, "y": 60 },
       "attributes": {
@@ -115,7 +145,6 @@
       "id": "sullust",
       "name": "Sullust",
       "tags": ["mid", "foundries"],
-      "missionPlanIds": ["gather-materials"],
       "sector": { "x": 1, "y": 0 },
       "position": { "x": 45, "y": 80 },
       "attributes": {
@@ -138,8 +167,7 @@
       "name": "Smuggle Supplies",
       "summary": "Move contraband to keep the network supplied.",
       "type": "logistics",
-      "availability": { "type": "location", "locationId": "tatooine" },
-      "requiredRoles": ["agent"],
+      "requiredSkills": ["agent", "pilot"],
       "requiredMaterials": [
         { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
       ],
@@ -147,12 +175,10 @@
       "baseSuccessChance": 0.7,
       "rewards": {
         "credits": 400,
-        "materials": 150,
         "intel": 1
       },
       "penalties": {
         "credits": -100,
-        "materials": -50,
         "intel": 0
       }
     },
@@ -161,8 +187,7 @@
       "name": "Raise Credits",
       "summary": "Leverage contacts for funding and influence.",
       "type": "logistics",
-      "availability": { "type": "location", "locationId": "coruscant" },
-      "requiredRoles": ["diplomat"],
+      "requiredSkills": ["diplomat"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
       ],
@@ -170,12 +195,10 @@
       "baseSuccessChance": 0.6,
       "rewards": {
         "credits": 600,
-        "materials": 50,
         "intel": 1
       },
       "penalties": {
         "credits": -150,
-        "materials": -20,
         "intel": 0
       }
     },
@@ -184,8 +207,7 @@
       "name": "Search for Allies",
       "summary": "Scout the Rim for sympathetic recruits.",
       "type": "logistics",
-      "availability": { "type": "location", "locationId": "tatooine" },
-      "requiredRoles": ["agent"],
+      "requiredSkills": ["agent", "operative"],
       "requiredMaterials": [
         { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
       ],
@@ -193,12 +215,10 @@
       "baseSuccessChance": 0.7,
       "rewards": {
         "credits": 200,
-        "materials": 80,
         "intel": 2
       },
       "penalties": {
         "credits": -60,
-        "materials": -40,
         "intel": 0
       }
     },
@@ -207,8 +227,7 @@
       "name": "Gather Materials",
       "summary": "Secure raw goods and spare parts.",
       "type": "gather-materials",
-      "availability": { "type": "location", "locationId": "sullust" },
-      "requiredRoles": ["agent"],
+      "requiredSkills": ["agent"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
       ],
@@ -216,12 +235,10 @@
       "baseSuccessChance": 0.75,
       "rewards": {
         "credits": 200,
-        "materials": 250,
         "intel": 1
       },
       "penalties": {
         "credits": -50,
-        "materials": -80,
         "intel": 0
       }
     },
@@ -231,7 +248,7 @@
       "summary": "Coordinate relief and gain goodwill across sectors.",
       "type": "logistics",
       "availability": { "type": "global" },
-      "requiredRoles": ["diplomat"],
+      "requiredSkills": ["diplomat", "operative"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
       ],
@@ -239,16 +256,45 @@
       "baseSuccessChance": 0.65,
       "rewards": {
         "credits": 300,
-        "materials": 120,
         "intel": 2
       },
       "penalties": {
         "credits": -80,
-        "materials": -60,
         "intel": 0
       }
     }
   ],
+  "locationAssignments": [
+    {
+      "id": "assign-tatooine-smuggle",
+      "locationId": "tatooine",
+      "planId": "smuggle-supplies",
+      "appearanceChance": 0.7,
+      "windowHours": 12
+    },
+    {
+      "id": "assign-tatooine-allies",
+      "locationId": "tatooine",
+      "planId": "search-allies",
+      "appearanceChance": 0.6,
+      "windowHours": 16
+    },
+    {
+      "id": "assign-coruscant-credits",
+      "locationId": "coruscant",
+      "planId": "raise-credits",
+      "appearanceChance": 0.5,
+      "windowHours": 10
+    },
+    {
+      "id": "assign-sullust-materials",
+      "locationId": "sullust",
+      "planId": "gather-materials",
+      "appearanceChance": 0.65,
+      "windowHours": 14
+    }
+  ],
+  "missionOffers": [],
   "missions": [],
   "travel": [],
   "eventLog": []

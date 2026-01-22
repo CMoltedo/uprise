@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { advanceTime, assignPersonnelToMission, assignTravel } from "../engine.js";
+import {
+  advanceTime,
+  assignPersonnelToMission,
+  assignTravel,
+  getMaterialRewardModifier,
+  refreshMissionOffers,
+} from "../engine.js";
 import type { GameState } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
-import { SPEEDS, createHourAccumulator, formatInUniverseTime } from "../time.js";
+import {
+  SPEEDS,
+  createHourAccumulator,
+  formatInUniverseTime,
+  getHourOfDay,
+  getUniverseDate,
+} from "../time.js";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
 
@@ -13,7 +25,8 @@ const formatResources = (state: GameState) =>
 export const App = () => {
   const initialScenario = (() => {
     const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
-    return buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+    const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+    return refreshMissionOffers(scenario);
   })();
 
   const [state, setState] = useState<GameState>(() => initialScenario);
@@ -36,6 +49,19 @@ export const App = () => {
     () => new Map(state.missionPlans.map((plan) => [plan.id, plan])),
     [state.missionPlans],
   );
+  const locationById = useMemo(
+    () => new Map(state.locations.map((location) => [location.id, location])),
+    [state.locations],
+  );
+  const materialRewardTableById = useMemo(
+    () =>
+      new Map(state.materialRewardTables.map((table) => [table.id, table])),
+    [state.materialRewardTables],
+  );
+  const missionTypeConfigByType = useMemo(
+    () => new Map(state.missionTypeConfigs.map((config) => [config.type, config])),
+    [state.missionTypeConfigs],
+  );
   const selectedPersonnel = useMemo(
     () =>
       selectedPersonnelIds
@@ -53,31 +79,62 @@ export const App = () => {
     }
     return selectedPersonnel[0]?.locationId ?? null;
   }, [selectedPersonnel]);
-  const availablePlans = useMemo(() => {
+  const availableOffers = useMemo(() => {
     if (!selectedPersonnelLocationId || selectedPersonnelLocationId === "mixed") {
       return [];
     }
-    const selectedLocation = state.locations.find(
-      (location) => location.id === selectedPersonnelLocationId,
+    return state.missionOffers.filter(
+      (offer) => offer.locationId === selectedPersonnelLocationId,
     );
-    if (!selectedLocation) {
-      return [];
+  }, [state.missionOffers, selectedPersonnelLocationId]);
+
+  const offerHoursByPlanId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const offer of availableOffers) {
+      const hoursLeft = Math.max(0, offer.expiresAtHours - state.nowHours);
+      map.set(offer.planId, hoursLeft);
     }
-    const locationPlans = selectedLocation.missionPlanIds?.length
-      ? state.missionPlans.filter((plan) =>
-          selectedLocation.missionPlanIds?.includes(plan.id),
-        )
-      : state.missionPlans.filter((plan) => {
-          if (plan.availability.type === "location") {
-            return plan.availability.locationId === selectedLocation.id;
-          }
-          return false;
-        });
+    return map;
+  }, [availableOffers, state.nowHours]);
+
+  const availablePlans = useMemo(() => {
+    const plansFromOffers = availableOffers
+      .map((offer) => state.missionPlans.find((plan) => plan.id === offer.planId))
+      .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
+
     const globalPlans = state.missionPlans.filter(
-      (plan) => plan.availability.type === "global",
+      (plan) => plan.availability?.type === "global",
     );
-    return [...locationPlans, ...globalPlans];
-  }, [state.missionPlans, selectedPersonnelLocationId, state.locations]);
+    const timePlans = state.missionPlans.filter(
+      (plan) =>
+        plan.availability?.type === "time" &&
+        state.nowHours >= plan.availability.startHours &&
+        state.nowHours <= plan.availability.endHours,
+    );
+    return [...plansFromOffers, ...globalPlans, ...timePlans];
+  }, [availableOffers, state.missionPlans, state.nowHours]);
+
+  const selectedOffer = useMemo(() => {
+    if (!selectedPersonnelLocationId || selectedPersonnelLocationId === "mixed") {
+      return null;
+    }
+    return availableOffers.find((offer) => offer.planId === selectedPlanId) ?? null;
+  }, [availableOffers, selectedPlanId, selectedPersonnelLocationId]);
+
+  const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) => {
+    const offerHours = offerHoursByPlanId.get(plan.id);
+    if (offerHours !== undefined) {
+      return `(${Math.ceil(offerHours)}h)`;
+    }
+    if (plan.availability?.type === "time") {
+      const hoursLeft = Math.max(0, plan.availability.endHours - state.nowHours);
+      return `(${Math.ceil(hoursLeft)}h)`;
+    }
+    if (plan.availability?.type === "global") {
+      return "(∞h)";
+    }
+    return "(?h)";
+  };
   const personnelById = useMemo(
     () => new Map(state.personnel.map((person) => [person.id, person])),
     [state.personnel],
@@ -90,9 +147,45 @@ export const App = () => {
   );
   const [travelHours, setTravelHours] = useState<number>(12);
   const missionListRows = Math.max(4, availablePlans.length);
+  const selectedLocation = useMemo(
+    () =>
+      selectedPersonnelLocationId && selectedPersonnelLocationId !== "mixed"
+        ? state.locations.find(
+            (location) => location.id === selectedPersonnelLocationId,
+          )
+        : null,
+    [selectedPersonnelLocationId, state.locations],
+  );
+  const rewardModifier = useMemo(
+    () =>
+      selectedLocation
+        ? getMaterialRewardModifier(state, selectedLocation.id)
+        : null,
+    [selectedLocation, state],
+  );
   const timeAccumulatorRef = useRef(
     createHourAccumulator(SPEEDS[2], initialScenario.nowHours),
   );
+  const [toasts, setToasts] = useState<
+    Array<{ id: string; message: string }>
+  >([]);
+  const lastEventIdRef = useRef<string | null>(null);
+  const hourOfDay = getHourOfDay(state.nowHours);
+  const hourFill = (hourOfDay / 24) * 100;
+  const universeDate = getUniverseDate(state.nowHours);
+  const year = universeDate.getUTCFullYear();
+  const month = universeDate.getUTCMonth() + 1;
+  const day = universeDate.getUTCDate();
+  const [yearFlashKey, setYearFlashKey] = useState(0);
+  const [monthFlashKey, setMonthFlashKey] = useState(0);
+  const [dayFlashKey, setDayFlashKey] = useState(0);
+  const [dialFlashKey, setDialFlashKey] = useState(0);
+  const lastDateRef = useRef<{
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+  } | null>(null);
 
   const handleAssignSample = () => {
     try {
@@ -133,10 +226,68 @@ export const App = () => {
   }, [speedIndex]);
 
   useEffect(() => {
+    const latest = state.eventLog[state.eventLog.length - 1];
+    if (!latest || latest.id === lastEventIdRef.current) {
+      return;
+    }
+    lastEventIdRef.current = latest.id;
+    const message =
+      latest.kind === "mission"
+        ? `${latest.success ? "Successful" : "Failed"} mission by ${
+            latest.personnelIds
+              .map((id) => personnelById.get(id)?.name ?? id)
+              .join(", ")
+          } at ${locationById.get(latest.locationId)?.name ?? latest.locationId}`
+        : latest.status === "started"
+          ? `${personnelById.get(latest.personnelId)?.name ?? latest.personnelId} departed ${
+              locationById.get(latest.fromLocationId)?.name ?? latest.fromLocationId
+            } for ${
+              locationById.get(latest.toLocationId)?.name ?? latest.toLocationId
+            } (${latest.travelHours ?? 0}h)`
+          : `${personnelById.get(latest.personnelId)?.name ?? latest.personnelId} arrived at ${
+              locationById.get(latest.toLocationId)?.name ?? latest.toLocationId
+            } from ${
+              locationById.get(latest.fromLocationId)?.name ?? latest.fromLocationId
+            }`;
+    const toast = { id: latest.id, message };
+    setToasts((prev) => [...prev, toast]);
+  }, [state.eventLog, planById, personnelById]);
+
+  useEffect(() => {
+    if (toasts.length === 0) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setToasts((prev) => prev.slice(1));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [toasts]);
+
+  useEffect(() => {
     if (!availablePlans.find((plan) => plan.id === selectedPlanId)) {
       setSelectedPlanId(availablePlans[0]?.id ?? "");
     }
   }, [availablePlans, selectedPlanId]);
+
+  useEffect(() => {
+    const current = { year, month, day, hour: hourOfDay };
+    const previous = lastDateRef.current;
+    if (previous) {
+      if (previous.year !== year) {
+        setYearFlashKey((prev) => prev + 1);
+      }
+      if (previous.month !== month) {
+        setMonthFlashKey((prev) => prev + 1);
+      }
+      if (previous.day !== day) {
+        setDayFlashKey((prev) => prev + 1);
+      }
+      if (previous.hour !== hourOfDay && hourOfDay === 0) {
+        setDialFlashKey((prev) => prev + 1);
+      }
+    }
+    lastDateRef.current = current;
+  }, [year, month, day, hourOfDay]);
 
   const handleAssignTravel = () => {
     try {
@@ -159,6 +310,23 @@ export const App = () => {
 
   return (
     <div className="page">
+      <div className="toast-stack">
+        {toasts.map((toast) => (
+          <div key={toast.id} className="toast">
+            <span>{toast.message}</span>
+            <button
+              type="button"
+              className="toast-close"
+              aria-label="Dismiss notification"
+              onClick={() =>
+                setToasts((prev) => prev.filter((item) => item.id !== toast.id))
+              }
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
       <header className="header">
         <div>
           <h1>Uprise</h1>
@@ -168,6 +336,37 @@ export const App = () => {
           {formatResources(state)}
           <div className="meta">
             In-universe time: {formatInUniverseTime(state.nowHours)}
+          </div>
+          <div className="time-indicator">
+            <div className="date-indicator">
+              <div className="date-year">
+                <span className="date-icon" aria-hidden="true">
+                  📅
+                </span>
+                <span key={`year-${yearFlashKey}`} className="flash-text">
+                  Y:{year}
+                </span>
+              </div>
+              <div className="date-md">
+                <span key={`month-${monthFlashKey}`} className="flash-text">
+                  M:{String(month).padStart(2, "0")}
+                </span>{" "}
+                ·{" "}
+                <span key={`day-${dayFlashKey}`} className="flash-text">
+                  D:{String(day).padStart(2, "0")}
+                </span>
+              </div>
+            </div>
+            <div className="time-dial-wrap">
+              <div
+                key={`dial-${dialFlashKey}`}
+                className="time-dial"
+                style={{ ["--dial-fill" as string]: `${hourFill}%` }}
+              >
+                <div className="time-dial-center" />
+                <div className="time-dial-label">{hourOfDay}h</div>
+              </div>
+            </div>
           </div>
           <div className="actions">
             <button
@@ -195,8 +394,8 @@ export const App = () => {
           <ul>
             {state.personnel.map((person) => (
               <li key={person.id}>
-                <strong>{person.name}</strong> · {person.role} · {person.status}{" "}
-                · {person.locationId}
+                <strong>{person.name}</strong> · {person.skills.join(", ")} ·{" "}
+                {person.status} · {person.locationId}
               </li>
             ))}
           </ul>
@@ -223,7 +422,8 @@ export const App = () => {
             >
               {state.personnel.map((person) => (
                 <option key={person.id} value={person.id}>
-                  {person.name} · {person.status} · {person.locationId}
+                  {person.name} · {person.skills.join(", ")} · {person.status} ·{" "}
+                  {person.locationId}
                 </option>
               ))}
             </select>
@@ -286,7 +486,7 @@ export const App = () => {
             >
               {state.personnel.map((person) => (
                 <option key={person.id} value={person.id}>
-                  {person.name} · {person.role} · {person.status} ·{" "}
+                  {person.name} · {person.skills.join(", ")} · {person.status} ·{" "}
                   {person.locationId}
                 </option>
               ))}
@@ -314,23 +514,37 @@ export const App = () => {
             >
               {availablePlans.map((plan) => (
                 <option key={plan.id} value={plan.id}>
-                  {plan.name} — {plan.summary}
+                  {getPlanHoursLeftLabel(plan)} {plan.name} — {plan.summary}
                 </option>
               ))}
             </select>
           </label>
+          {selectedPersonnelIds.length > 0 &&
+          selectedPersonnelLocationId !== "mixed" &&
+          availablePlans.length === 0 ? (
+            <div className="meta">No assignments available right now.</div>
+          ) : null}
           {selectedPlan ? (
             <div className="meta">
-              {selectedPlan.name} · {selectedPlan.type} ·{" "}
-              {selectedPlan.availability.type === "location"
-                ? selectedPlan.availability.locationId
-                : selectedPlan.availability.type}
+              {selectedPlan.name} · {selectedPlan.type}
               <div className="meta">
                 Duration {selectedPlan.durationHours}h · Success{" "}
                 {Math.round(selectedPlan.baseSuccessChance * 100)}%
               </div>
+              {selectedOffer ? (
+                <div className="meta">
+                  Offer expires {formatInUniverseTime(selectedOffer.expiresAtHours)}
+                </div>
+              ) : selectedPlan.availability?.type === "global" ? (
+                <div className="meta">Global availability</div>
+              ) : selectedPlan.availability?.type === "time" ? (
+                <div className="meta">
+                  Window {formatInUniverseTime(selectedPlan.availability.startHours)}{" "}
+                  to {formatInUniverseTime(selectedPlan.availability.endHours)}
+                </div>
+              ) : null}
               <div className="meta">
-                Roles: {selectedPlan.requiredRoles.join(", ")}
+                Skills: {selectedPlan.requiredSkills.join(", ")}
               </div>
               {selectedPlan.requiredMaterials &&
               selectedPlan.requiredMaterials.length > 0 ? (
@@ -354,9 +568,6 @@ export const App = () => {
                   selectedPlan.rewards.credits
                     ? `${selectedPlan.rewards.credits} credits`
                     : null,
-                  selectedPlan.rewards.materials
-                    ? `${selectedPlan.rewards.materials} materials`
-                    : null,
                   selectedPlan.rewards.intel
                     ? `${selectedPlan.rewards.intel} intel`
                     : null,
@@ -364,6 +575,27 @@ export const App = () => {
                   .filter(Boolean)
                   .join(", ") || "none"}
               </div>
+              {selectedPlan.materialRewardTableId ||
+              missionTypeConfigByType.get(selectedPlan.type)
+                ?.defaultMaterialRewardTableId ? (
+                <div className="meta">
+                  Materials:{" "}
+                  {materialRewardTableById
+                    .get(
+                      selectedPlan.materialRewardTableId ??
+                        missionTypeConfigByType.get(selectedPlan.type)
+                          ?.defaultMaterialRewardTableId ??
+                        "",
+                    )
+                    ?.entries.map((entry) => {
+                      const chance = rewardModifier
+                        ? Math.round(entry.baseChance * rewardModifier * 100)
+                        : Math.round(entry.baseChance * 100);
+                      return `${entry.quantity}x ${entry.materialId} (${chance}%)`;
+                    })
+                    .join(", ") || "none"}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="meta">Select an assignment to see details.</div>

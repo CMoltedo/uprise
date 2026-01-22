@@ -8,7 +8,7 @@
     {
       "id": "pilot-wedge",
       "name": "Wedge Antilles",
-      "role": "pilot",
+      "skills": ["pilot"],
       "status": "idle",
       "locationId": "corellia"
     }
@@ -25,7 +25,6 @@
       "id": "kessel",
       "name": "Kessel",
       "tags": ["rim", "mines"],
-      "missionPlanIds": ["kessel-intel"],
       "sector": { "x": 1, "y": 1 },
       "position": { "x": 85, "y": 35 },
       "attributes": {
@@ -45,20 +44,26 @@
       "name": "Mine for Intel",
       "summary": "Extract data and rumors from the spice mines.",
       "type": "logistics",
-      "availability": { "type": "location", "locationId": "kessel" },
-      "requiredRoles": ["operative"],
+      "requiredSkills": ["operative"],
       "durationHours": 22,
       "baseSuccessChance": 0.55,
       "rewards": {
         "credits": 150,
-        "materials": 120,
         "intel": 3
       },
       "penalties": {
         "credits": -120,
-        "materials": -60,
         "intel": 0
       }
+    }
+  ],
+  "locationAssignments": [
+    {
+      "id": "assign-kessel-intel",
+      "locationId": "kessel",
+      "planId": "kessel-intel",
+      "appearanceChance": 0.55,
+      "windowHours": 10
     }
   ]
 }

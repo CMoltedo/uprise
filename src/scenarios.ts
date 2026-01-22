@@ -2,28 +2,38 @@ import type {
   EventLogEntry,
   GameState,
   Location,
+  LocationAssignment,
+  MaterialCatalogItem,
   MaterialItem,
+  MissionOffer,
   MissionInstance,
   MissionPlan,
+  MissionTypeConfig,
   Personnel,
   ResourceBundle,
   TravelAssignment,
 } from "./models.js";
 
 type WithId = { id: string };
+type WithType = { type: string };
 
 type PartialWithId<T extends WithId> = Partial<T> & WithId;
+type PartialWithType<T extends WithType> = Partial<T> & WithType;
 
 export interface ScenarioOverrides {
   faction?: GameState["faction"];
   nowHours?: number;
   headquartersId?: string;
   resources?: Partial<ResourceBundle>;
+  materialCatalog?: Array<PartialWithId<MaterialCatalogItem>>;
   personnel?: Array<PartialWithId<Personnel>>;
   materials?: Array<PartialWithId<MaterialItem>>;
   locations?: Array<PartialWithId<Location>>;
   missionPlans?: Array<PartialWithId<MissionPlan>>;
   missions?: Array<PartialWithId<MissionInstance>>;
+  locationAssignments?: Array<PartialWithId<LocationAssignment>>;
+  missionOffers?: Array<PartialWithId<MissionOffer>>;
+  missionTypeConfigs?: Array<PartialWithType<MissionTypeConfig>>;
   travel?: Array<PartialWithId<TravelAssignment>>;
   eventLog?: Array<PartialWithId<EventLogEntry>>;
 }
@@ -43,6 +53,26 @@ const mergeById = <T extends WithId>(
       map.set(override.id, mergeItem(existing, override));
     } else {
       map.set(override.id, override as T);
+    }
+  }
+  return Array.from(map.values());
+};
+
+const mergeByType = <T extends WithType>(
+  base: T[],
+  overrides: Array<PartialWithType<T>> | undefined,
+  mergeItem: (current: T, override: PartialWithType<T>) => T,
+): T[] => {
+  if (!overrides || overrides.length === 0) {
+    return base;
+  }
+  const map = new Map(base.map((item) => [item.type, item]));
+  for (const override of overrides) {
+    const existing = map.get(override.type);
+    if (existing) {
+      map.set(override.type, mergeItem(existing, override));
+    } else {
+      map.set(override.type, override as T);
     }
   }
   return Array.from(map.values());
@@ -82,6 +112,11 @@ export const buildScenario = (
       ...baseline.resources,
       ...overrides.resources,
     },
+    materialCatalog: mergeById(
+      baseline.materialCatalog,
+      overrides.materialCatalog,
+      (current, override) => ({ ...current, ...override }),
+    ),
     personnel: mergeById(
       baseline.personnel,
       overrides.personnel,
@@ -101,6 +136,21 @@ export const buildScenario = (
     missions: mergeById(
       baseline.missions,
       overrides.missions,
+      (current, override) => ({ ...current, ...override }),
+    ),
+    locationAssignments: mergeById(
+      baseline.locationAssignments,
+      overrides.locationAssignments,
+      (current, override) => ({ ...current, ...override }),
+    ),
+    missionOffers: mergeById(
+      baseline.missionOffers,
+      overrides.missionOffers,
+      (current, override) => ({ ...current, ...override }),
+    ),
+    missionTypeConfigs: mergeByType(
+      baseline.missionTypeConfigs,
+      overrides.missionTypeConfigs,
       (current, override) => ({ ...current, ...override }),
     ),
     travel: mergeById(
