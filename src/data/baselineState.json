@@ -1,7 +1,7 @@
 {
   "faction": "rebels",
   "nowHours": 0,
-  "headquartersId": "tatooine",
+  "headquartersId": "tatooine-mos-eisley",
   "resources": {
     "credits": 1200,
     "materials": 300,
@@ -14,18 +14,44 @@
   ],
   "personnel": [
     {
-      "id": "agent-luke",
-      "name": "Luke Skywalker",
+      "id": "personnel-001",
+      "name": "Rowan Hale",
       "skills": ["agent", "pilot"],
+      "traits": ["cautious", "quick-learner"],
       "status": "idle",
-      "locationId": "tatooine"
+      "locationId": "tatooine-mos-eisley"
     },
     {
-      "id": "agent-leia",
-      "name": "Leia Organa",
+      "id": "personnel-002",
+      "name": "Sable Quinn",
       "skills": ["diplomat", "operative"],
+      "traits": ["charismatic", "schemer"],
       "status": "idle",
-      "locationId": "corellia"
+      "locationId": "corellia-shipyards"
+    },
+    {
+      "id": "personnel-003",
+      "name": "Vela Dorne",
+      "skills": ["agent", "operative"],
+      "traits": ["reckless", "loyal"],
+      "status": "idle",
+      "locationId": "tatooine-mos-espa"
+    },
+    {
+      "id": "personnel-004",
+      "name": "Kato Rhys",
+      "skills": ["pilot"],
+      "traits": ["stoic", "hotheaded"],
+      "status": "idle",
+      "locationId": "sullust-capital"
+    },
+    {
+      "id": "personnel-005",
+      "name": "Mira Solis",
+      "skills": ["diplomat"],
+      "traits": ["empathetic", "proud"],
+      "status": "idle",
+      "locationId": "coruscant-senate"
     }
   ],
   "materials": [
@@ -62,13 +88,74 @@
     { "type": "logistics", "defaultMaterialRewardTableId": "contraband-cache" },
     { "type": "gather-materials", "defaultMaterialRewardTableId": "industrial-find" }
   ],
-  "locations": [
+  "sectors": [
+    {
+      "id": "core-sector",
+      "name": "Core Sector",
+      "tags": ["core"],
+      "polygon": [
+        { "x": 0, "y": 0 },
+        { "x": 120, "y": 0 },
+        { "x": 120, "y": 120 },
+        { "x": 0, "y": 120 }
+      ]
+    },
+    {
+      "id": "rim-sector",
+      "name": "Outer Rim Sector",
+      "tags": ["rim"],
+      "polygon": [
+        { "x": 140, "y": 0 },
+        { "x": 260, "y": 0 },
+        { "x": 260, "y": 120 },
+        { "x": 140, "y": 120 }
+      ]
+    }
+  ],
+  "planets": [
     {
       "id": "coruscant",
       "name": "Coruscant",
-      "tags": ["core", "capital"],
-      "sector": { "x": 0, "y": 0 },
-      "position": { "x": 30, "y": 45 },
+      "sectorId": "core-sector",
+      "tags": ["capital"],
+      "position": { "x": 30, "y": 45 }
+    },
+    {
+      "id": "corellia",
+      "name": "Corellia",
+      "sectorId": "core-sector",
+      "tags": ["shipyards"],
+      "position": { "x": 70, "y": 25 }
+    },
+    {
+      "id": "bespin",
+      "name": "Bespin",
+      "sectorId": "rim-sector",
+      "tags": ["tibanna"],
+      "position": { "x": 30, "y": 25 }
+    },
+    {
+      "id": "tatooine",
+      "name": "Tatooine",
+      "sectorId": "rim-sector",
+      "tags": ["smugglers"],
+      "position": { "x": 85, "y": 70 }
+    },
+    {
+      "id": "sullust",
+      "name": "Sullust",
+      "sectorId": "rim-sector",
+      "tags": ["foundries"],
+      "position": { "x": 55, "y": 90 }
+    }
+  ],
+  "locations": [
+    {
+      "id": "coruscant-senate",
+      "name": "Senate District",
+      "tags": ["political"],
+      "planetId": "coruscant",
+      "position": { "x": 35, "y": 40 },
       "attributes": {
         "resistance": 20,
         "healthcareFacilities": 75,
@@ -77,18 +164,30 @@
         "customsScrutiny": 85,
         "patrolFrequency": 90,
         "garrisonStrength": 95
-      },
-      "subLocations": [
-        { "id": "coru-senate", "name": "Senate District", "position": { "x": 32, "y": 48 } },
-        { "id": "coru-industrial", "name": "Industrial Ring", "position": { "x": 26, "y": 40 } }
-      ]
+      }
     },
     {
-      "id": "corellia",
-      "name": "Corellia",
-      "tags": ["core", "shipyards"],
-      "sector": { "x": 0, "y": 0 },
-      "position": { "x": 55, "y": 25 },
+      "id": "coruscant-industrial",
+      "name": "Industrial Ring",
+      "tags": ["industrial"],
+      "planetId": "coruscant",
+      "position": { "x": 20, "y": 60 },
+      "attributes": {
+        "resistance": 25,
+        "healthcareFacilities": 70,
+        "techLevel": 90,
+        "populationDensity": 85,
+        "customsScrutiny": 80,
+        "patrolFrequency": 85,
+        "garrisonStrength": 90
+      }
+    },
+    {
+      "id": "corellia-shipyards",
+      "name": "Shipyards",
+      "tags": ["shipyards"],
+      "planetId": "corellia",
+      "position": { "x": 60, "y": 35 },
       "attributes": {
         "resistance": 45,
         "healthcareFacilities": 70,
@@ -97,17 +196,14 @@
         "customsScrutiny": 55,
         "patrolFrequency": 60,
         "garrisonStrength": 65
-      },
-      "subLocations": [
-        { "id": "cor-shipyards", "name": "Shipyards", "position": { "x": 58, "y": 27 } }
-      ]
+      }
     },
     {
-      "id": "bespin",
-      "name": "Bespin",
-      "tags": ["mid", "tibanna"],
-      "sector": { "x": 1, "y": 0 },
-      "position": { "x": 20, "y": 15 },
+      "id": "bespin-cloud-city",
+      "name": "Cloud City",
+      "tags": ["tibanna"],
+      "planetId": "bespin",
+      "position": { "x": 25, "y": 30 },
       "attributes": {
         "resistance": 35,
         "healthcareFacilities": 60,
@@ -116,17 +212,14 @@
         "customsScrutiny": 30,
         "patrolFrequency": 25,
         "garrisonStrength": 35
-      },
-      "subLocations": [
-        { "id": "bespin-city", "name": "Cloud City", "position": { "x": 22, "y": 18 } }
-      ]
+      }
     },
     {
-      "id": "tatooine",
-      "name": "Tatooine",
-      "tags": ["rim", "smugglers"],
-      "sector": { "x": 1, "y": 0 },
-      "position": { "x": 70, "y": 60 },
+      "id": "tatooine-mos-eisley",
+      "name": "Mos Eisley",
+      "tags": ["smugglers"],
+      "planetId": "tatooine",
+      "position": { "x": 70, "y": 55 },
       "attributes": {
         "resistance": 55,
         "healthcareFacilities": 35,
@@ -135,18 +228,30 @@
         "customsScrutiny": 25,
         "patrolFrequency": 30,
         "garrisonStrength": 20
-      },
-      "subLocations": [
-        { "id": "tat-mos-eisley", "name": "Mos Eisley", "position": { "x": 72, "y": 63 } },
-        { "id": "tat-mos-espa", "name": "Mos Espa", "position": { "x": 66, "y": 58 } }
-      ]
+      }
     },
     {
-      "id": "sullust",
-      "name": "Sullust",
-      "tags": ["mid", "foundries"],
-      "sector": { "x": 1, "y": 0 },
-      "position": { "x": 45, "y": 80 },
+      "id": "tatooine-mos-espa",
+      "name": "Mos Espa",
+      "tags": ["smugglers"],
+      "planetId": "tatooine",
+      "position": { "x": 50, "y": 40 },
+      "attributes": {
+        "resistance": 50,
+        "healthcareFacilities": 30,
+        "techLevel": 35,
+        "populationDensity": 25,
+        "customsScrutiny": 20,
+        "patrolFrequency": 25,
+        "garrisonStrength": 18
+      }
+    },
+    {
+      "id": "sullust-capital",
+      "name": "Sullust Capital",
+      "tags": ["foundries"],
+      "planetId": "sullust",
+      "position": { "x": 55, "y": 75 },
       "attributes": {
         "resistance": 50,
         "healthcareFacilities": 55,
@@ -155,10 +260,7 @@
         "customsScrutiny": 40,
         "patrolFrequency": 45,
         "garrisonStrength": 55
-      },
-      "subLocations": [
-        { "id": "sul-capital", "name": "Sullust Capital", "position": { "x": 47, "y": 78 } }
-      ]
+      }
     }
   ],
   "missionPlans": [
@@ -267,28 +369,28 @@
   "locationAssignments": [
     {
       "id": "assign-tatooine-smuggle",
-      "locationId": "tatooine",
+      "locationId": "tatooine-mos-eisley",
       "planId": "smuggle-supplies",
       "appearanceChance": 0.7,
       "windowHours": 12
     },
     {
       "id": "assign-tatooine-allies",
-      "locationId": "tatooine",
+      "locationId": "tatooine-mos-espa",
       "planId": "search-allies",
       "appearanceChance": 0.6,
       "windowHours": 16
     },
     {
       "id": "assign-coruscant-credits",
-      "locationId": "coruscant",
+      "locationId": "coruscant-senate",
       "planId": "raise-credits",
       "appearanceChance": 0.5,
       "windowHours": 10
     },
     {
       "id": "assign-sullust-materials",
-      "locationId": "sullust",
+      "locationId": "sullust-capital",
       "planId": "gather-materials",
       "appearanceChance": 0.65,
       "windowHours": 14

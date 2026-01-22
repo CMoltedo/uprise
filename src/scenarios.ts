@@ -9,8 +9,10 @@ import type {
   MissionInstance,
   MissionPlan,
   MissionTypeConfig,
+  Planet,
   Personnel,
   ResourceBundle,
+  Sector,
   TravelAssignment,
 } from "./models.js";
 
@@ -28,6 +30,8 @@ export interface ScenarioOverrides {
   materialCatalog?: Array<PartialWithId<MaterialCatalogItem>>;
   personnel?: Array<PartialWithId<Personnel>>;
   materials?: Array<PartialWithId<MaterialItem>>;
+  sectors?: Array<PartialWithId<Sector>>;
+  planets?: Array<PartialWithId<Planet>>;
   locations?: Array<PartialWithId<Location>>;
   missionPlans?: Array<PartialWithId<MissionPlan>>;
   missions?: Array<PartialWithId<MissionInstance>>;
@@ -127,6 +131,18 @@ export const buildScenario = (
       overrides.materials,
       (current, override) => ({ ...current, ...override }),
     ),
+    sectors: mergeById(baseline.sectors, overrides.sectors, (current, override) => ({
+      ...current,
+      ...override,
+      tags: override.tags ?? current.tags,
+      polygon: override.polygon ?? current.polygon,
+    })),
+    planets: mergeById(baseline.planets, overrides.planets, (current, override) => ({
+      ...current,
+      ...override,
+      tags: override.tags ?? current.tags,
+      position: override.position ?? current.position,
+    })),
     locations: mergeById(baseline.locations, overrides.locations, mergeLocation),
     missionPlans: mergeById(
       baseline.missionPlans,

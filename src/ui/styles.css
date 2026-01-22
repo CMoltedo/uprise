@@ -180,6 +180,59 @@ ul {
   margin-top: 12px;
 }
 
+.map-svg {
+  width: 100%;
+  height: 260px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.map-svg-large {
+  height: 420px;
+}
+
+.map-section .map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.map-node {
+  cursor: pointer;
+  fill: #7dd3fc;
+}
+
+.map-sector polygon {
+  fill: rgba(125, 211, 252, 0.12);
+  stroke: #7dd3fc;
+  stroke-width: 1;
+}
+
+.map-sector.selected polygon {
+  fill: rgba(34, 197, 94, 0.2);
+  stroke: #22c55e;
+}
+
+.map-sector-polygon {
+  fill: rgba(125, 211, 252, 0.06);
+  stroke: rgba(125, 211, 252, 0.2);
+  stroke-width: 0.6;
+}
+
+.map-node text {
+  fill: #e6edf3;
+  font-size: 6px;
+}
+
+.map-node.selected circle {
+  fill: #22c55e;
+}
+
+
 .field {
   display: flex;
   flex-direction: column;
@@ -200,6 +253,10 @@ select {
 
 select[multiple] {
   min-height: 180px;
+}
+
+select option:disabled {
+  color: #6b7280;
 }
 
 input[type="number"] {

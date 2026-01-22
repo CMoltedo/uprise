@@ -9,6 +9,7 @@ import {
 import type { GameState } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
+import sectorsData from "../data/sectors.json";
 import {
   SPEEDS,
   createHourAccumulator,
@@ -22,6 +23,19 @@ import type { ScenarioOverrides } from "../scenarios.js";
 const formatResources = (state: GameState) =>
   `Cr ${state.resources.credits} · Intel ${state.resources.intel}`;
 
+const parseSectorCoords = (coords: string) => {
+  const numbers = coords.split(",").map((value) => Number(value.trim()));
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < numbers.length; i += 2) {
+    const x = numbers[i];
+    const y = numbers[i + 1];
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      points.push({ x, y });
+    }
+  }
+  return points;
+};
+
 export const App = () => {
   const initialScenario = (() => {
     const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
@@ -34,8 +48,18 @@ export const App = () => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     initialScenario.missionPlans[0]?.id ?? "",
   );
-  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>(
-    [],
+  const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>("");
+  const [mapLevel, setMapLevel] = useState<"galaxy" | "sector" | "planet">(
+    "galaxy",
+  );
+  const [selectedSectorId, setSelectedSectorId] = useState<string>(
+    initialScenario.sectors[0]?.id ?? "",
+  );
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string>(
+    initialScenario.planets[0]?.id ?? "",
+  );
+  const [selectedMapLocationId, setSelectedMapLocationId] = useState<string>(
+    initialScenario.locations[0]?.id ?? "",
   );
   const activeMissions = useMemo(
     () => state.missions.filter((mission) => mission.status === "active"),
@@ -48,6 +72,14 @@ export const App = () => {
   const planById = useMemo(
     () => new Map(state.missionPlans.map((plan) => [plan.id, plan])),
     [state.missionPlans],
+  );
+  const planetById = useMemo(
+    () => new Map(state.planets.map((planet) => [planet.id, planet])),
+    [state.planets],
+  );
+  const sectorById = useMemo(
+    () => new Map(state.sectors.map((sector) => [sector.id, sector])),
+    [state.sectors],
   );
   const locationById = useMemo(
     () => new Map(state.locations.map((location) => [location.id, location])),
@@ -62,25 +94,22 @@ export const App = () => {
     () => new Map(state.missionTypeConfigs.map((config) => [config.type, config])),
     [state.missionTypeConfigs],
   );
-  const selectedPersonnel = useMemo(
-    () =>
-      selectedPersonnelIds
-        .map((id) => state.personnel.find((person) => person.id === id))
-        .filter((person): person is NonNullable<typeof person> => Boolean(person)),
-    [selectedPersonnelIds, state.personnel],
-  );
-  const selectedPersonnelLocationId = useMemo(() => {
-    if (selectedPersonnel.length === 0) {
+  const selectedPersonnel = useMemo(() => {
+    if (!selectedPersonnelId) {
       return null;
     }
-    const unique = new Set(selectedPersonnel.map((person) => person.locationId));
-    if (unique.size !== 1) {
-      return "mixed";
+    return (
+      state.personnel.find((person) => person.id === selectedPersonnelId) ?? null
+    );
+  }, [selectedPersonnelId, state.personnel]);
+  const selectedPersonnelLocationId = useMemo(() => {
+    if (!selectedPersonnel) {
+      return null;
     }
-    return selectedPersonnel[0]?.locationId ?? null;
+    return selectedPersonnel.locationId ?? null;
   }, [selectedPersonnel]);
   const availableOffers = useMemo(() => {
-    if (!selectedPersonnelLocationId || selectedPersonnelLocationId === "mixed") {
+    if (!selectedPersonnelLocationId) {
       return [];
     }
     return state.missionOffers.filter(
@@ -114,12 +143,11 @@ export const App = () => {
     return [...plansFromOffers, ...globalPlans, ...timePlans];
   }, [availableOffers, state.missionPlans, state.nowHours]);
 
-  const selectedOffer = useMemo(() => {
-    if (!selectedPersonnelLocationId || selectedPersonnelLocationId === "mixed") {
-      return null;
-    }
-    return availableOffers.find((offer) => offer.planId === selectedPlanId) ?? null;
-  }, [availableOffers, selectedPlanId, selectedPersonnelLocationId]);
+  const selectedOffer = useMemo(
+    () =>
+      availableOffers.find((offer) => offer.planId === selectedPlanId) ?? null,
+    [availableOffers, selectedPlanId],
+  );
 
   const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) => {
     const offerHours = offerHoursByPlanId.get(plan.id);
@@ -176,6 +204,80 @@ export const App = () => {
   const year = universeDate.getUTCFullYear();
   const month = universeDate.getUTCMonth() + 1;
   const day = universeDate.getUTCDate();
+  const selectedSector = useMemo(
+    () => state.sectors.find((sector) => sector.id === selectedSectorId),
+    [state.sectors, selectedSectorId],
+  );
+  const selectedPlanet = useMemo(
+    () => state.planets.find((planet) => planet.id === selectedPlanetId),
+    [state.planets, selectedPlanetId],
+  );
+  const selectedMapLocation = useMemo(
+    () => state.locations.find((location) => location.id === selectedMapLocationId),
+    [state.locations, selectedMapLocationId],
+  );
+
+  const sectorBounds = useMemo(() => {
+    if (!selectedSector) {
+      return { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+    }
+    const xs = selectedSector.polygon.map((p) => p.x);
+    const ys = selectedSector.polygon.map((p) => p.y);
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys),
+    };
+  }, [selectedSector]);
+
+  const sectorPolygons = useMemo(() => {
+    return (sectorsData as Array<{ title: string; coords: string }>).map(
+      (sector) => ({
+        name: sector.title,
+        points: parseSectorCoords(sector.coords),
+      }),
+    );
+  }, []);
+
+  const galaxyBounds = useMemo(() => {
+    if (sectorPolygons.length === 0) {
+      return { minX: 0, minY: 0, maxX: 200, maxY: 200 };
+    }
+    const xs = sectorPolygons.flatMap((sector) => sector.points.map((p) => p.x));
+    const ys = sectorPolygons.flatMap((sector) => sector.points.map((p) => p.y));
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys),
+    };
+  }, [sectorPolygons]);
+
+  const galaxyPoints = useMemo(
+    () =>
+      state.sectors.map((sector) => {
+        const xs = sector.polygon.map((p) => p.x);
+        const ys = sector.polygon.map((p) => p.y);
+        return {
+          id: sector.id,
+          name: sector.name,
+          x: xs.reduce((a, b) => a + b, 0) / xs.length,
+          y: ys.reduce((a, b) => a + b, 0) / ys.length,
+        };
+      }),
+    [state.sectors],
+  );
+
+  const sectorPlanets = useMemo(
+    () => state.planets.filter((planet) => planet.sectorId === selectedSectorId),
+    [state.planets, selectedSectorId],
+  );
+
+  const planetLocations = useMemo(
+    () => state.locations.filter((location) => location.planetId === selectedPlanetId),
+    [state.locations, selectedPlanetId],
+  );
   const [yearFlashKey, setYearFlashKey] = useState(0);
   const [monthFlashKey, setMonthFlashKey] = useState(0);
   const [dayFlashKey, setDayFlashKey] = useState(0);
@@ -193,17 +295,17 @@ export const App = () => {
         alert("Select a mission first.");
         return;
       }
-      if (selectedPersonnelIds.length === 0) {
-        alert("Select at least one personnel.");
+      if (!selectedPersonnelId) {
+        alert("Select personnel.");
         return;
       }
       const next = assignPersonnelToMission(
         state,
         selectedPlanId,
-        selectedPersonnelIds,
+        [selectedPersonnelId],
       );
       setState(next);
-      setSelectedPersonnelIds([]);
+      setSelectedPersonnelId("");
     } catch (error) {
       console.error(error);
       alert(error instanceof Error ? error.message : "Assignment failed");
@@ -395,24 +497,43 @@ export const App = () => {
             {state.personnel.map((person) => (
               <li key={person.id}>
                 <strong>{person.name}</strong> · {person.skills.join(", ")} ·{" "}
-                {person.status} · {person.locationId}
+                {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
+                {person.locationId}
               </li>
             ))}
           </ul>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedPersonnelIds(
-                  state.personnel
-                    .filter((person) => person.status === "idle")
-                    .map((person) => person.id),
-                )
-              }
+          <h3>Personnel Details</h3>
+          <label className="field">
+            Personnel
+            <select
+              value={selectedPersonnelId}
+              onChange={(event) => setSelectedPersonnelId(event.target.value)}
+              size={Math.max(4, Math.min(8, state.personnel.length))}
+              style={{
+                height: `${Math.max(4, Math.min(8, state.personnel.length)) * 2.1}rem`,
+              }}
             >
-              Select all idle
-            </button>
-          </div>
+              <option value="">-- choose --</option>
+              {state.personnel.map((person) => (
+                <option
+                  key={person.id}
+                  value={person.id}
+                  disabled={person.status === "wounded"}
+                >
+                  {person.name} · {person.skills.join(", ")} · {person.locationId}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedPersonnel ? (
+            <div className="meta">
+              {selectedPersonnel.name} · {selectedPersonnel.skills.join(", ")} ·{" "}
+              {selectedPersonnel.traits?.join(", ") ?? "no traits"} ·{" "}
+              {selectedPersonnel.status} · {selectedPersonnel.locationId}
+            </div>
+          ) : (
+            <div className="meta">Select personnel to view details.</div>
+          )}
           <h3>Travel Orders</h3>
           <label className="field">
             Personnel
@@ -422,7 +543,8 @@ export const App = () => {
             >
               {state.personnel.map((person) => (
                 <option key={person.id} value={person.id}>
-                  {person.name} · {person.skills.join(", ")} · {person.status} ·{" "}
+                  {person.name} · {person.skills.join(", ")} ·{" "}
+                  {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {person.locationId}
                 </option>
               ))}
@@ -434,11 +556,16 @@ export const App = () => {
               value={travelDestinationId}
               onChange={(event) => setTravelDestinationId(event.target.value)}
             >
-              {state.locations.map((location) => (
+              {state.locations.map((location) => {
+                const planet = planetById.get(location.planetId);
+                const sector = planet ? sectorById.get(planet.sectorId) : null;
+                return (
                 <option key={location.id} value={location.id}>
-                  {location.name} · sector {location.sector.x},{location.sector.y}
+                  {location.name} · {planet?.name ?? location.planetId} ·{" "}
+                  {sector?.name ?? planet?.sectorId ?? "unknown sector"}
                 </option>
-              ))}
+                );
+              })}
             </select>
           </label>
           <label className="field">
@@ -473,29 +600,8 @@ export const App = () => {
 
         <div className="card">
           <h2>Assignment Planning</h2>
-          <label className="field">
-            Personnel (multi-select)
-            <select
-              multiple
-              value={selectedPersonnelIds}
-              onChange={(event) => {
-                const options = Array.from(event.target.selectedOptions);
-                setSelectedPersonnelIds(options.map((option) => option.value));
-              }}
-              size={Math.min(6, state.personnel.length)}
-            >
-              {state.personnel.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name} · {person.skills.join(", ")} · {person.status} ·{" "}
-                  {person.locationId}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selectedPersonnelIds.length === 0 ? (
+          {selectedPersonnelId.length === 0 ? (
             <div className="meta">Select personnel to see assignments.</div>
-          ) : selectedPersonnelLocationId === "mixed" ? (
-            <div className="meta">Selected personnel are in different locations.</div>
           ) : (
             <div className="meta">
               Assignments at{" "}
@@ -519,9 +625,7 @@ export const App = () => {
               ))}
             </select>
           </label>
-          {selectedPersonnelIds.length > 0 &&
-          selectedPersonnelLocationId !== "mixed" &&
-          availablePlans.length === 0 ? (
+          {selectedPersonnelId.length > 0 && availablePlans.length === 0 ? (
             <div className="meta">No assignments available right now.</div>
           ) : null}
           {selectedPlan ? (
@@ -664,32 +768,173 @@ export const App = () => {
         )}
       </section>
 
+      <section className="card map-section">
+        <div className="map-header">
+          <h2>
+            Map · {mapLevel === "galaxy"
+              ? "Galaxy"
+              : mapLevel === "sector"
+                ? "Sector"
+                : "Planet"}
+          </h2>
+          {mapLevel !== "galaxy" ? (
+            <button
+              type="button"
+              onClick={() =>
+                setMapLevel(mapLevel === "planet" ? "sector" : "galaxy")
+              }
+            >
+              Back
+            </button>
+          ) : null}
+        </div>
+        {mapLevel === "galaxy" ? (
+          <svg
+            className="map-svg map-svg-large"
+            viewBox={`${galaxyBounds.minX - 10} ${galaxyBounds.minY - 10} ${
+              galaxyBounds.maxX - galaxyBounds.minX + 20
+            } ${galaxyBounds.maxY - galaxyBounds.minY + 20}`}
+          >
+            {sectorPolygons.map((sector) => (
+              <polygon
+                key={sector.name}
+                className="map-sector-polygon"
+                points={sector.points.map((p) => `${p.x},${p.y}`).join(" ")}
+              >
+                <title>{sector.name}</title>
+              </polygon>
+            ))}
+            {state.sectors.map((sector) => (
+              <g
+                key={sector.id}
+                className={
+                  sector.id === selectedSectorId
+                    ? "map-sector selected"
+                    : "map-sector"
+                }
+                onClick={() => {
+                  setSelectedSectorId(sector.id);
+                  setMapLevel("sector");
+                }}
+              >
+                <polygon
+                  points={sector.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                >
+                  <title>{sector.name}</title>
+                </polygon>
+                <text
+                  x={sector.polygon.reduce((sum, p) => sum + p.x, 0) / sector.polygon.length}
+                  y={sector.polygon.reduce((sum, p) => sum + p.y, 0) / sector.polygon.length}
+                >
+                  {sector.name}
+                </text>
+              </g>
+            ))}
+          </svg>
+        ) : mapLevel === "sector" ? (
+          <svg
+            className="map-svg map-svg-large"
+            viewBox={`${sectorBounds.minX - 10} ${sectorBounds.minY - 10} ${
+              sectorBounds.maxX - sectorBounds.minX + 20
+            } ${sectorBounds.maxY - sectorBounds.minY + 20}`}
+          >
+            {sectorPlanets.map((planet) => (
+              <g
+                key={planet.id}
+                className={
+                  planet.id === selectedPlanetId ? "map-node selected" : "map-node"
+                }
+                onClick={() => {
+                  setSelectedPlanetId(planet.id);
+                  setMapLevel("planet");
+                }}
+              >
+                <circle cx={planet.position.x} cy={planet.position.y} r={6} />
+                <text x={planet.position.x + 8} y={planet.position.y + 4}>
+                  {planet.name}
+                </text>
+              </g>
+            ))}
+          </svg>
+        ) : (
+          <svg className="map-svg map-svg-large" viewBox="0 0 100 100">
+            {planetLocations.map((location) => (
+              <g
+                key={location.id}
+                className={
+                  location.id === selectedMapLocationId
+                    ? "map-node selected"
+                    : "map-node"
+                }
+                onClick={() => setSelectedMapLocationId(location.id)}
+              >
+                <circle cx={location.position.x} cy={location.position.y} r={5} />
+                <text x={location.position.x + 7} y={location.position.y + 4}>
+                  {location.name}
+                </text>
+              </g>
+            ))}
+          </svg>
+        )}
+        <div className="meta">Click to drill down into the map hierarchy.</div>
+      </section>
+
       <section className="card">
-        <h2>Map Nodes</h2>
-        <ul>
-          {state.locations.map((location) => (
-            <li key={location.id}>
-              <strong>{location.name}</strong> · {location.tags.join(", ")}
+        <h2>Map Details</h2>
+        {mapLevel === "galaxy" ? (
+          selectedSector ? (
+            <>
               <div className="meta">
-                Sector ({location.sector.x},{location.sector.y}) · Local (
-                {location.position.x},{location.position.y})
+                <strong>{selectedSector.name}</strong> ·{" "}
+                {selectedSector.tags.join(", ")}
+              </div>
+              <div className="meta">Polygon points: {selectedSector.polygon.length}</div>
+            </>
+          ) : (
+            <p>Select a sector to see details.</p>
+          )
+        ) : mapLevel === "sector" ? (
+          selectedPlanet ? (
+            <>
+              <div className="meta">
+                <strong>{selectedPlanet.name}</strong> ·{" "}
+                {selectedPlanet.tags.join(", ")}
               </div>
               <div className="meta">
-                Resistance {location.attributes.resistance} · Healthcare{" "}
-                {location.attributes.healthcareFacilities} · Tech{" "}
-                {location.attributes.techLevel}
+                Sector: {selectedPlanet.sectorId} · Position ({selectedPlanet.position.x},
+                {selectedPlanet.position.y})
               </div>
-              <div className="meta">
-                Pop density {location.attributes.populationDensity} · Customs{" "}
-                {location.attributes.customsScrutiny}
-              </div>
-              <div className="meta">
-                Patrols {location.attributes.patrolFrequency} · Garrison{" "}
-                {location.attributes.garrisonStrength}
-              </div>
-            </li>
-          ))}
-        </ul>
+            </>
+          ) : (
+            <p>Select a planet to see details.</p>
+          )
+        ) : selectedMapLocation ? (
+          <>
+            <div className="meta">
+              <strong>{selectedMapLocation.name}</strong> ·{" "}
+              {selectedMapLocation.tags.join(", ")}
+            </div>
+            <div className="meta">
+              Planet: {selectedMapLocation.planetId} · Local (
+              {selectedMapLocation.position.x},{selectedMapLocation.position.y})
+            </div>
+            <div className="meta">
+              Resistance {selectedMapLocation.attributes.resistance} · Healthcare{" "}
+              {selectedMapLocation.attributes.healthcareFacilities} · Tech{" "}
+              {selectedMapLocation.attributes.techLevel}
+            </div>
+            <div className="meta">
+              Pop density {selectedMapLocation.attributes.populationDensity} · Customs{" "}
+              {selectedMapLocation.attributes.customsScrutiny}
+            </div>
+            <div className="meta">
+              Patrols {selectedMapLocation.attributes.patrolFrequency} · Garrison{" "}
+              {selectedMapLocation.attributes.garrisonStrength}
+            </div>
+          </>
+        ) : (
+          <p>Select a location on the map to see details.</p>
+        )}
       </section>
     </div>
   );

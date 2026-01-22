@@ -4,13 +4,14 @@
     "credits": 1500
   },
   "personnel": [
-    { "id": "agent-luke", "status": "wounded" },
+    { "id": "personnel-001", "status": "wounded" },
     {
-      "id": "pilot-wedge",
-      "name": "Wedge Antilles",
-      "skills": ["pilot"],
+      "id": "personnel-006",
+      "name": "Quill Arden",
+      "skills": ["pilot", "operative"],
+      "traits": ["meticulous", "nervous"],
       "status": "idle",
-      "locationId": "corellia"
+      "locationId": "corellia-shipyards"
     }
   ],
   "materials": [
@@ -22,11 +23,11 @@
       "attributes": { "resistance": 55, "customsScrutiny": 45 }
     },
     {
-      "id": "kessel",
-      "name": "Kessel",
-      "tags": ["rim", "mines"],
-      "sector": { "x": 1, "y": 1 },
-      "position": { "x": 85, "y": 35 },
+      "id": "kessel-mines",
+      "name": "Kessel Mines",
+      "tags": ["mines"],
+      "planetId": "kessel",
+      "position": { "x": 40, "y": 40 },
       "attributes": {
         "resistance": 15,
         "healthcareFacilities": 20,
@@ -36,6 +37,15 @@
         "patrolFrequency": 60,
         "garrisonStrength": 55
       }
+    }
+  ],
+  "planets": [
+    {
+      "id": "kessel",
+      "name": "Kessel",
+      "sectorId": "rim-sector",
+      "tags": ["mines"],
+      "position": { "x": 105, "y": 40 }
     }
   ],
   "missionPlans": [
@@ -60,7 +70,7 @@
   "locationAssignments": [
     {
       "id": "assign-kessel-intel",
-      "locationId": "kessel",
+      "locationId": "kessel-mines",
       "planId": "kessel-intel",
       "appearanceChance": 0.55,
       "windowHours": 10

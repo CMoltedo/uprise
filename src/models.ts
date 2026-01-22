@@ -15,22 +15,32 @@ export interface Personnel {
   id: string;
   name: string;
   skills: PersonnelSkill[];
+  traits?: string[];
   status: PersonnelStatus;
   locationId: string;
+}
+
+export interface Sector {
+  id: string;
+  name: string;
+  tags: string[];
+  polygon: Array<{ x: number; y: number }>;
+}
+
+export interface Planet {
+  id: string;
+  name: string;
+  sectorId: string;
+  tags: string[];
+  position: { x: number; y: number };
 }
 
 export interface Location {
   id: string;
   name: string;
   tags: string[];
-  sector: {
-    x: number;
-    y: number;
-  };
-  position: {
-    x: number;
-    y: number;
-  };
+  planetId: string;
+  position: { x: number; y: number };
   attributes: {
     resistance: number;
     healthcareFacilities: number;
@@ -40,14 +50,6 @@ export interface Location {
     patrolFrequency: number;
     garrisonStrength: number;
   };
-  subLocations?: Array<{
-    id: string;
-    name: string;
-    position: {
-      x: number;
-      y: number;
-    };
-  }>;
 }
 
 export interface MaterialItem {
@@ -184,6 +186,8 @@ export interface GameState {
   materials: MaterialItem[];
   materialRewardTables: MaterialRewardTable[];
   missionTypeConfigs: MissionTypeConfig[];
+  sectors: Sector[];
+  planets: Planet[];
   locations: Location[];
   missionPlans: MissionPlan[];
   missions: MissionInstance[];
