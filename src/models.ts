@@ -9,7 +9,7 @@ export type PersonnelStatus =
   | "captured";
 
 export type MissionStatus = "planned" | "active" | "resolved" | "failed";
-export type MissionType = "logistics" | "gather-materials";
+export type MissionType = "logistics" | "gather-materials" | "recruit-allies";
 
 export interface Personnel {
   id: string;

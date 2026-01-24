@@ -8,7 +8,7 @@
     "intel": 5
   },
   "materialCatalog": [
-    { "id": "blaster-parts", "name": "Blaster Parts", "tags": ["weapon"] },
+    { "id": "blasters", "name": "Blasters", "tags": ["weapon"] },
     { "id": "med-kits", "name": "Med Kits", "tags": ["medical"] },
     { "id": "ship-fuel", "name": "Ship Fuel", "tags": ["logistics"] }
   ],
@@ -362,6 +362,23 @@
       },
       "penalties": {
         "credits": -80,
+        "intel": 0
+      }
+    },
+    {
+      "id": "recruit-allies",
+      "name": "Recruit Allies",
+      "summary": "Build trust and bring a new ally into the cause.",
+      "type": "recruit-allies",
+      "availability": { "type": "global" },
+      "requiredSkills": ["diplomat"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.6,
+      "rewards": {
+        "intel": 1
+      },
+      "penalties": {
+        "credits": -50,
         "intel": 0
       }
     }

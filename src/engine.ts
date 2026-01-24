@@ -17,6 +17,7 @@ import type {
   ResourceBundle,
   TravelAssignment,
 } from "./models.js";
+import { generatePersonnel } from "./generators.js";
 
 const DEFAULT_RESOURCES: ResourceBundle = {
   credits: 0,
@@ -180,6 +181,24 @@ const applyMaterialRewards = (
   return nextMaterials === state.materials
     ? state
     : { ...state, materials: nextMaterials };
+};
+
+const applyRecruitRewards = (
+  state: GameState,
+  locationId: string,
+  count: number,
+): GameState => {
+  if (count <= 0) {
+    return state;
+  }
+  const nextPersonnel = [...state.personnel];
+  let workingState: GameState = { ...state, personnel: nextPersonnel };
+  for (let i = 0; i < count; i += 1) {
+    const recruit = generatePersonnel(workingState, { locationId });
+    nextPersonnel.push(recruit);
+    workingState = { ...workingState, personnel: nextPersonnel };
+  }
+  return workingState;
 };
 
 const isPlanInTimeWindow = (state: GameState, plan: MissionPlan) => {
@@ -410,6 +429,9 @@ const resolveMission = (
   };
   if (success) {
     nextState = applyMaterialRewards(nextState, plan, mission.locationId);
+    if (plan.type === "recruit-allies") {
+      nextState = applyRecruitRewards(nextState, mission.locationId, 1);
+    }
   }
   return nextState;
 };

@@ -5,8 +5,9 @@ import {
   assignTravel,
   getMaterialRewardModifier,
   refreshMissionOffers,
+  validateAssignment,
 } from "../engine.js";
-import type { GameState } from "../models.js";
+import type { GameState, Personnel } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
 import sectorsData from "../data/sectors.json";
@@ -19,6 +20,7 @@ import {
 } from "../time.js";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
+import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
 
 const formatResources = (state: GameState) =>
   `Cr ${state.resources.credits} · Intel ${state.resources.intel}`;
@@ -102,6 +104,15 @@ export const App = () => {
       state.personnel.find((person) => person.id === selectedPersonnelId) ?? null
     );
   }, [selectedPersonnelId, state.personnel]);
+  const assignmentErrors = useMemo(() => {
+    if (!selectedPlan) {
+      return ["Select an assignment."];
+    }
+    if (!selectedPersonnel) {
+      return ["Select personnel."];
+    }
+    return validateAssignment(state, selectedPlan, [selectedPersonnel]);
+  }, [selectedPlan, selectedPersonnel, state]);
   const selectedPersonnelLocationId = useMemo(() => {
     if (!selectedPersonnel) {
       return null;
@@ -197,6 +208,37 @@ export const App = () => {
   const [toasts, setToasts] = useState<
     Array<{ id: string; message: string }>
   >([]);
+  const pushToast = (message: string) => {
+    const id = `toast-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    setToasts((prev) => [...prev, { id, message }]);
+  };
+
+  const handleSave = () => {
+    const payload = serializeSave(state);
+    localStorage.setItem(SAVE_KEY, payload);
+    pushToast("Game saved locally.");
+  };
+
+  const handleLoad = () => {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) {
+      pushToast("No local save found.");
+      return;
+    }
+    const loaded = parseSave(raw);
+    if (!loaded) {
+      pushToast("Save file is invalid.");
+      return;
+    }
+    setState(loaded);
+    setSelectedPlanId(loaded.missionPlans[0]?.id ?? "");
+    setSelectedPersonnelId("");
+    setSelectedMapLocationId(loaded.locations[0]?.id ?? "");
+    setSelectedSectorId(loaded.sectors[0]?.id ?? "");
+    setSelectedPlanetId(loaded.planets[0]?.id ?? "");
+    setMapLevel("galaxy");
+    pushToast("Game loaded from local save.");
+  };
   const lastEventIdRef = useRef<string | null>(null);
   const hourOfDay = getHourOfDay(state.nowHours);
   const hourFill = (hourOfDay / 24) * 100;
@@ -312,6 +354,7 @@ export const App = () => {
     }
   };
 
+
   useEffect(() => {
     const speed = SPEEDS[speedIndex] ?? SPEEDS[2];
     setState((prev) => {
@@ -410,6 +453,11 @@ export const App = () => {
     }
   };
 
+  const getPersonnelOptionStyle = (person: Personnel) => {
+    const isUnavailable = person.status === "wounded" || person.status === "assigned";
+    return isUnavailable ? { color: "#6b7280" } : undefined;
+  };
+
   return (
     <div className="page">
       <div className="toast-stack">
@@ -485,6 +533,12 @@ export const App = () => {
             >
               Faster
             </button>
+            <button type="button" onClick={handleSave}>
+              Save
+            </button>
+            <button type="button" onClick={handleLoad}>
+              Load
+            </button>
           </div>
           <div className="meta">Speed: {SPEEDS[speedIndex]?.label}</div>
         </div>
@@ -518,7 +572,7 @@ export const App = () => {
                 <option
                   key={person.id}
                   value={person.id}
-                  disabled={person.status === "wounded"}
+                  style={getPersonnelOptionStyle(person)}
                 >
                   {person.name} · {person.skills.join(", ")} · {person.locationId}
                 </option>
@@ -542,7 +596,7 @@ export const App = () => {
               onChange={(event) => setTravelPersonnelId(event.target.value)}
             >
               {state.personnel.map((person) => (
-                <option key={person.id} value={person.id}>
+                <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
                   {person.name} · {person.skills.join(", ")} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {person.locationId}
@@ -705,7 +759,16 @@ export const App = () => {
             <div className="meta">Select an assignment to see details.</div>
           )}
           <div className="actions">
-            <button type="button" onClick={handleAssignSample}>
+            <button
+              type="button"
+              onClick={handleAssignSample}
+              disabled={assignmentErrors.length > 0}
+              title={
+                assignmentErrors.length > 0
+                  ? assignmentErrors.join(" ")
+                  : "Assign personnel to this assignment."
+              }
+            >
               Assign
             </button>
           </div>
@@ -731,7 +794,9 @@ export const App = () => {
           <ul>
             {activeMissions.map((mission) => (
               <li key={mission.id}>
-                {mission.planId} · {mission.remainingHours}h remaining · pers{" "}
+                {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
+                {locationById.get(mission.locationId)?.name ?? mission.locationId} ·{" "}
+                {mission.remainingHours}h remaining · pers{" "}
                 {mission.assignedPersonnelIds
                   .map((id) => personnelById.get(id)?.name ?? id)
                   .join(", ")}
