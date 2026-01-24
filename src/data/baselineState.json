@@ -389,28 +389,28 @@
       "locationId": "tatooine-mos-eisley",
       "planId": "smuggle-supplies",
       "appearanceChance": 0.7,
-      "windowHours": 12
+      "windowHours": 20
     },
     {
       "id": "assign-tatooine-allies",
       "locationId": "tatooine-mos-espa",
       "planId": "search-allies",
       "appearanceChance": 0.6,
-      "windowHours": 16
+      "windowHours": 24
     },
     {
       "id": "assign-coruscant-credits",
       "locationId": "coruscant-senate",
       "planId": "raise-credits",
       "appearanceChance": 0.5,
-      "windowHours": 10
+      "windowHours": 18
     },
     {
       "id": "assign-sullust-materials",
       "locationId": "sullust-capital",
       "planId": "gather-materials",
       "appearanceChance": 0.65,
-      "windowHours": 14
+      "windowHours": 22
     }
   ],
   "missionOffers": [],

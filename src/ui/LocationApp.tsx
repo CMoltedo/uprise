@@ -54,8 +54,16 @@ export const LocationApp = () => {
   const [dragPersonnelId, setDragPersonnelId] = useState<string | null>(null);
   const [mapDropLocationId, setMapDropLocationId] = useState<string | null>(null);
   const [showConsoleMenu, setShowConsoleMenu] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [flashPlanId, setFlashPlanId] = useState<string | null>(null);
+  const [flashPersonnelId, setFlashPersonnelId] = useState<string | null>(null);
+  const [recentlyAssignedPlans, setRecentlyAssignedPlans] = useState<
+    Array<{ planId: string; expiresAt: number }>
+  >([]);
   const headerRef = useRef<HTMLElement | null>(null);
   const consolePanelRef = useRef<HTMLDivElement | null>(null);
+  const flashPlanTimeoutRef = useRef<number | null>(null);
+  const flashPersonnelTimeoutRef = useRef<number | null>(null);
 
   const locationById = useMemo(
     () => new Map(state.locations.map((location) => [location.id, location])),
@@ -231,16 +239,32 @@ export const LocationApp = () => {
     }
     return Number.POSITIVE_INFINITY;
   };
+  const ghostPlans = useMemo(() => {
+    const now = Date.now();
+    return recentlyAssignedPlans
+      .filter((entry) => entry.expiresAt > now)
+      .map((entry) => planById.get(entry.planId))
+      .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
+  }, [recentlyAssignedPlans, planById]);
+  const ghostPlanIds = useMemo(
+    () => new Set(recentlyAssignedPlans.map((entry) => entry.planId)),
+    [recentlyAssignedPlans],
+  );
+  const displayPlans = useMemo(() => {
+    const existing = new Set(availablePlans.map((plan) => plan.id));
+    const extras = ghostPlans.filter((plan) => !existing.has(plan.id));
+    return [...availablePlans, ...extras];
+  }, [availablePlans, ghostPlans]);
   const sortedAvailablePlans = useMemo(
     () =>
-      [...availablePlans].sort((a, b) => {
+      [...displayPlans].sort((a, b) => {
         const diff = getPlanSortValue(a) - getPlanSortValue(b);
         if (diff !== 0) {
           return diff;
         }
         return a.name.localeCompare(b.name);
       }),
-    [availablePlans, offerHoursByPlanId, state.nowHours],
+    [displayPlans, offerHoursByPlanId, state.nowHours],
   );
 
   const selectedPlan = useMemo(
@@ -266,6 +290,30 @@ export const LocationApp = () => {
         .filter((mission) => mission.status === "active")
         .sort((a, b) => a.remainingHours - b.remainingHours),
     [state.missions],
+  );
+  const activeMissionByPlanId = useMemo(() => {
+    const map = new Map<string, typeof state.missions[number]>();
+    for (const mission of activeMissionsAll) {
+      const existing = map.get(mission.planId);
+      if (!existing || mission.remainingHours < existing.remainingHours) {
+        map.set(mission.planId, mission);
+      }
+    }
+    return map;
+  }, [activeMissionsAll]);
+  const completingSoonMissions = useMemo(
+    () => activeMissionsAll.filter((mission) => mission.remainingHours <= 5),
+    [activeMissionsAll],
+  );
+  const expiringSoonOffers = useMemo(
+    () =>
+      state.missionOffers
+        .filter((offer) => offer.expiresAtHours - state.nowHours <= 24)
+        .sort(
+          (a, b) =>
+            a.expiresAtHours - state.nowHours - (b.expiresAtHours - state.nowHours),
+        ),
+    [state.missionOffers, state.nowHours],
   );
   const missionByPersonnelId = useMemo(() => {
     const map = new Map<string, typeof state.missions[number]>();
@@ -295,6 +343,7 @@ export const LocationApp = () => {
       parts: Array<
         | { kind: "text"; value: string }
         | { kind: "location"; value: string; locationId: string }
+        | { kind: "personnel"; value: string; personnelId: string }
       >;
     }>
   >([]);
@@ -332,6 +381,38 @@ export const LocationApp = () => {
         setSelectedSectorId(planet.sectorId);
       }
     }
+  };
+  const jumpToPersonnel = (personnelId: string) => {
+    const person = personnelById.get(personnelId);
+    if (!person) {
+      return;
+    }
+    jumpToLocation(person.locationId);
+    triggerPersonnelFlash(personnelId);
+  };
+  const triggerPlanFlash = (planId: string) => {
+    if (flashPlanTimeoutRef.current) {
+      window.clearTimeout(flashPlanTimeoutRef.current);
+      flashPlanTimeoutRef.current = null;
+    }
+    setFlashPlanId(null);
+    window.setTimeout(() => setFlashPlanId(planId), 0);
+    flashPlanTimeoutRef.current = window.setTimeout(() => {
+      setFlashPlanId(null);
+      flashPlanTimeoutRef.current = null;
+    }, 1300);
+  };
+  const triggerPersonnelFlash = (personnelId: string) => {
+    if (flashPersonnelTimeoutRef.current) {
+      window.clearTimeout(flashPersonnelTimeoutRef.current);
+      flashPersonnelTimeoutRef.current = null;
+    }
+    setFlashPersonnelId(null);
+    window.setTimeout(() => setFlashPersonnelId(personnelId), 0);
+    flashPersonnelTimeoutRef.current = window.setTimeout(() => {
+      setFlashPersonnelId(null);
+      flashPersonnelTimeoutRef.current = null;
+    }, 1300);
   };
 
   const handleSave = () => {
@@ -428,6 +509,13 @@ export const LocationApp = () => {
       );
       setState(next);
       setSelectedPlanId(planId);
+      if (plan.availability?.type !== "global") {
+        const now = Date.now();
+        setRecentlyAssignedPlans((prev) => [
+          ...prev.filter((entry) => entry.planId !== planId && entry.expiresAt > now),
+          { planId, expiresAt: now + 3000 },
+        ]);
+      }
     };
 
   const handleDropOnLocation =
@@ -508,6 +596,20 @@ export const LocationApp = () => {
     return getLocationLabel(selectedLocationId);
   };
 
+  const focusSector = (sectorId: string) => {
+    setSelectedSectorId(sectorId);
+    setMapLevel("sector");
+    const planet = state.planets.find((item) => item.sectorId === sectorId);
+    if (!planet) {
+      return;
+    }
+    setSelectedPlanetId(planet.id);
+    const location = state.locations.find((item) => item.planetId === planet.id);
+    if (location) {
+      setSelectedLocationId(location.id);
+    }
+  };
+
   useEffect(() => {
     const speed = SPEEDS[speedIndex] ?? SPEEDS[2];
     setState((prev) => {
@@ -516,12 +618,15 @@ export const LocationApp = () => {
     });
     const interval = setInterval(() => {
       setState((prev) => {
+        if (isPaused) {
+          return prev;
+        }
         const hoursToAdvance = timeAccumulatorRef.current.tick(prev.nowHours);
         return hoursToAdvance > 0 ? advanceTime(prev, hoursToAdvance) : prev;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [speedIndex]);
+  }, [speedIndex, isPaused]);
 
   useEffect(() => {
     const latest = state.eventLog[state.eventLog.length - 1];
@@ -534,39 +639,46 @@ export const LocationApp = () => {
       value: getLocationLabel(locationId),
       locationId,
     });
+    const makePersonnelPart = (personnelId: string) => ({
+      kind: "personnel" as const,
+      value: personnelById.get(personnelId)?.name ?? personnelId,
+      personnelId,
+    });
     const parts =
       latest.kind === "mission"
-        ? ([
-            {
-              kind: "text",
-              value: `${latest.success ? "Successful" : "Failed"} mission by ${
-                latest.personnelIds
-                  .map((id) => personnelById.get(id)?.name ?? id)
-                  .join(", ")
-              } at `,
-            },
-            makeLocationPart(latest.locationId),
-          ] as const)
-        : latest.status === "started"
-          ? ([
+        ? (() => {
+            const detail: Array<
+              | { kind: "text"; value: string }
+              | { kind: "location"; value: string; locationId: string }
+              | { kind: "personnel"; value: string; personnelId: string }
+            > = [
               {
                 kind: "text",
-                value: `${
-                  personnelById.get(latest.personnelId)?.name ?? latest.personnelId
-                } departed `,
+                value: `${latest.success ? "Successful" : "Failed"} mission by `,
               },
+            ];
+            latest.personnelIds.forEach((id, index) => {
+              detail.push(makePersonnelPart(id));
+              if (index < latest.personnelIds.length - 1) {
+                detail.push({ kind: "text", value: ", " });
+              }
+            });
+            detail.push({ kind: "text", value: " at " });
+            detail.push(makeLocationPart(latest.locationId));
+            return detail;
+          })()
+        : latest.status === "started"
+          ? ([
+              makePersonnelPart(latest.personnelId),
+              { kind: "text", value: " departed " },
               makeLocationPart(latest.fromLocationId),
               { kind: "text", value: " for " },
               makeLocationPart(latest.toLocationId),
               { kind: "text", value: ` (${latest.travelHours ?? 0}h)` },
             ] as const)
           : ([
-              {
-                kind: "text",
-                value: `${
-                  personnelById.get(latest.personnelId)?.name ?? latest.personnelId
-                } arrived at `,
-              },
+              makePersonnelPart(latest.personnelId),
+              { kind: "text", value: " arrived at " },
               makeLocationPart(latest.toLocationId),
               { kind: "text", value: " from " },
               makeLocationPart(latest.fromLocationId),
@@ -592,6 +704,20 @@ export const LocationApp = () => {
   }, [availablePlans, selectedPlanId]);
 
   useEffect(() => {
+    if (recentlyAssignedPlans.length === 0) {
+      return;
+    }
+    const now = Date.now();
+    const nextExpiry = Math.min(...recentlyAssignedPlans.map((entry) => entry.expiresAt));
+    const timeout = window.setTimeout(() => {
+      setRecentlyAssignedPlans((prev) =>
+        prev.filter((entry) => entry.expiresAt > Date.now()),
+      );
+    }, Math.max(0, nextExpiry - now) + 20);
+    return () => window.clearTimeout(timeout);
+  }, [recentlyAssignedPlans]);
+
+  useEffect(() => {
     const current = { year, month, day, hour: hourOfDay };
     const previous = lastDateRef.current;
     if (previous) {
@@ -610,6 +736,17 @@ export const LocationApp = () => {
     }
     lastDateRef.current = current;
   }, [year, month, day, hourOfDay]);
+
+  useEffect(() => {
+    if (!isPaused) {
+      return;
+    }
+    setDialFlashKey((prev) => prev + 1);
+    const interval = setInterval(() => {
+      setDialFlashKey((prev) => prev + 1);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isPaused]);
 
   useEffect(() => {
     if (locationById.has(selectedLocationId)) {
@@ -665,6 +802,15 @@ export const LocationApp = () => {
                   >
                     {part.value}
                   </button>
+                ) : part.kind === "personnel" ? (
+                  <button
+                    key={`${toast.id}-person-${part.personnelId}-${index}`}
+                    type="button"
+                    className="toast-agent"
+                    onClick={() => jumpToPersonnel(part.personnelId)}
+                  >
+                    {part.value}
+                  </button>
                 ) : (
                   <span key={`${toast.id}-text-${index}`}>{part.value}</span>
                 ),
@@ -685,23 +831,67 @@ export const LocationApp = () => {
       </div>
       <header className="header" ref={headerRef}>
         <div className="card header-missions">
-          <h2>Completing Soon</h2>
-          {activeMissions.filter((mission) => mission.remainingHours <= 5).length === 0 ? (
+          <div className="header-missions-header">
+            <h2 className="header-missions-title">Imminent Activity</h2>
+            <div className="meta header-missions-meta">
+              {completingSoonMissions.length} completing · {expiringSoonOffers.length} expiring
+            </div>
+          </div>
+          {completingSoonMissions.length === 0 && expiringSoonOffers.length === 0 ? (
             <p>No assignments finishing soon.</p>
           ) : (
             <ul className="header-missions-list">
-              {activeMissions
-                .filter((mission) => mission.remainingHours <= 5)
-                .map((mission) => (
-                  <li key={mission.id}>
-                    {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
-                    {getLocationLabel(mission.locationId)} ·{" "}
-                    {mission.remainingHours}h remaining · pers{" "}
-                    {mission.assignedPersonnelIds
-                      .map((id) => personnelById.get(id)?.name ?? id)
-                      .join(", ")}
-                  </li>
-                ))}
+              {completingSoonMissions.map((mission) => (
+                <li key={mission.id}>
+                  {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
+                  <button
+                    type="button"
+                    className="inline-link"
+                    onClick={() => jumpToLocation(mission.locationId)}
+                  >
+                    {getLocationLabel(mission.locationId)}
+                  </button>{" "}
+                  · {mission.remainingHours}h remaining · pers{" "}
+                  {mission.assignedPersonnelIds.map((id, index) => (
+                    <span key={id}>
+                      {index > 0 ? ", " : ""}
+                      <button
+                        type="button"
+                        className="inline-link"
+                        onClick={() => jumpToPersonnel(id)}
+                      >
+                        {personnelById.get(id)?.name ?? id}
+                      </button>
+                    </span>
+                  ))}
+                </li>
+              ))}
+              {expiringSoonOffers.map((offer) => (
+                <li key={offer.id}>
+                  Offer:{" "}
+                  <button
+                    type="button"
+                    className="inline-link"
+                    onClick={() => {
+                      jumpToLocation(offer.locationId);
+                      setSelectedPlanId(offer.planId);
+                      triggerPlanFlash(offer.planId);
+                    }}
+                  >
+                    {planById.get(offer.planId)?.name ?? offer.planId}
+                  </button>{" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    className="inline-link"
+                    onClick={() => jumpToLocation(offer.locationId)}
+                  >
+                    {getLocationLabel(offer.locationId)}
+                  </button>{" "}
+                  ·{" "}
+                  {Math.max(0, Math.ceil(offer.expiresAtHours - state.nowHours))}h left
+                </li>
+              ))}
             </ul>
           )}
         </div>
@@ -763,12 +953,22 @@ export const LocationApp = () => {
                 Speed: {SPEEDS[speedIndex]?.label}
               </div>
               <div key={dialFlashKey} className="time-dial-wrap">
-                <div
-                  className="time-dial"
-                  style={{ ["--dial-fill" as string]: `${hourFill}%` }}
-                >
-                  <div className="time-dial-center" />
-                  <div className="time-dial-label">{hourOfDay}h</div>
+              <div
+                className={`time-dial${isPaused ? " is-paused" : ""}`}
+                style={{ ["--dial-fill" as string]: `${hourFill}%` }}
+                role="button"
+                tabIndex={0}
+                aria-label={isPaused ? "Resume time" : "Pause time"}
+                onClick={() => setIsPaused((prev) => !prev)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setIsPaused((prev) => !prev);
+                  }
+                }}
+              >
+                <div className="time-dial-center" />
+                <div className="time-dial-label">{isPaused ? "⏸" : `${hourOfDay}h`}</div>
                 </div>
               </div>
             </div>
@@ -856,10 +1056,7 @@ export const LocationApp = () => {
                 <g
                   key={sector.id}
                   className={`map-sector-rect${isSelected ? " selected" : ""}`}
-                  onClick={() => {
-                    setSelectedSectorId(sector.id);
-                    setMapLevel("sector");
-                  }}
+                  onClick={() => focusSector(sector.id)}
                 >
                   <rect x={position.x} y={position.y} width={54} height={54} rx={6} />
                   <text
@@ -978,6 +1175,29 @@ export const LocationApp = () => {
 
       <section className="grid">
         <div className="card">
+          <div className="map-breadcrumbs location-breadcrumbs">
+            <button type="button" onClick={() => setMapLevel("galaxy")}>
+              Galaxy
+            </button>
+            {mapLevel !== "galaxy" ? (
+              <button
+                type="button"
+                onClick={() => selectedSectorId && setMapLevel("sector")}
+                disabled={!selectedSectorId}
+              >
+                {sectorById.get(selectedSectorId)?.name ?? "Sector"}
+              </button>
+            ) : null}
+            {mapLevel === "planet" ? (
+              <button
+                type="button"
+                onClick={() => selectedPlanetId && setMapLevel("planet")}
+                disabled={!selectedPlanetId}
+              >
+                {planetById.get(selectedPlanetId)?.name ?? "Planet"}
+              </button>
+            ) : null}
+          </div>
           <h2>Location Info - {getContextLabel()}</h2>
           {selectedLocation ? (
             <div className="meta">
@@ -1010,7 +1230,7 @@ export const LocationApp = () => {
                     person.status === "traveling"
                       ? " is-unavailable"
                       : ""
-                  }`}
+                  }${flashPersonnelId === person.id ? " is-flashing" : ""}`}
                   style={getPersonnelOptionStyle(person)}
                   draggable
                   onDragStart={handleDragStart(person.id)}
@@ -1050,8 +1270,13 @@ export const LocationApp = () => {
               const dragPerson = dragPersonnelId
                 ? personnelById.get(dragPersonnelId)
                 : null;
+              const activeMission = activeMissionByPlanId.get(plan.id);
+              const isGlobalCooldown =
+                plan.availability?.type === "global" && Boolean(activeMission);
+              const isRecentlyAssigned = ghostPlanIds.has(plan.id);
+              const isDisabled = isGlobalCooldown || isRecentlyAssigned;
               const canAssign =
-                dragPerson && dragPlanId === plan.id
+                !isDisabled && dragPerson && dragPlanId === plan.id
                   ? validateAssignment(
                       state,
                       plan,
@@ -1068,16 +1293,35 @@ export const LocationApp = () => {
                       ? " is-over"
                       : " is-over-invalid"
                     : ""
-                }${selectedPlanId === plan.id ? " is-selected" : ""}`}
+                }${selectedPlanId === plan.id ? " is-selected" : ""}${
+                  flashPlanId === plan.id ? " is-flashing" : ""
+                }${isDisabled ? " is-disabled" : ""}`}
                 onDragOver={(event) => {
+                  if (isDisabled) {
+                    return;
+                  }
                   event.preventDefault();
                   setDragPlanId(plan.id);
                   setHoverPlanId(plan.id);
                 }}
                 onDragLeave={() => setDragPlanId(null)}
-                onDrop={handleDropOnPlan(plan.id)}
-                onClick={() => setSelectedPlanId(plan.id)}
-                onMouseEnter={() => setHoverPlanId(plan.id)}
+                onDrop={(event) => {
+                  if (isDisabled) {
+                    return;
+                  }
+                  handleDropOnPlan(plan.id)(event);
+                }}
+                onClick={() => {
+                  if (isDisabled) {
+                    return;
+                  }
+                  setSelectedPlanId(plan.id);
+                }}
+                onMouseEnter={() => {
+                  if (!isDisabled) {
+                    setHoverPlanId(plan.id);
+                  }
+                }}
                 onMouseLeave={() => setHoverPlanId(null)}
               >
                 <strong>{plan.name}</strong>
@@ -1086,6 +1330,11 @@ export const LocationApp = () => {
                   {getPlanHoursLeftLabel(plan)} · {plan.durationHours}h · Success{" "}
                   {Math.round(plan.baseSuccessChance * 100)}%
                 </div>
+                {isGlobalCooldown ? (
+                  <div className="meta">
+                    Cooldown: {Math.ceil(activeMission?.remainingHours ?? 0)}h left
+                  </div>
+                ) : null}
               </div>
             )})}
           </div>
