@@ -54,6 +54,8 @@ export const LocationApp = () => {
   const [dragPersonnelId, setDragPersonnelId] = useState<string | null>(null);
   const [mapDropLocationId, setMapDropLocationId] = useState<string | null>(null);
   const [showConsoleMenu, setShowConsoleMenu] = useState<boolean>(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const consolePanelRef = useRef<HTMLDivElement | null>(null);
 
   const locationById = useMemo(
     () => new Map(state.locations.map((location) => [location.id, location])),
@@ -258,6 +260,25 @@ export const LocationApp = () => {
       ),
     [state.missions, selectedLocationId],
   );
+  const activeMissionsAll = useMemo(
+    () =>
+      [...state.missions]
+        .filter((mission) => mission.status === "active")
+        .sort((a, b) => a.remainingHours - b.remainingHours),
+    [state.missions],
+  );
+  const missionByPersonnelId = useMemo(() => {
+    const map = new Map<string, typeof state.missions[number]>();
+    for (const mission of activeMissionsAll) {
+      for (const id of mission.assignedPersonnelIds) {
+        const existing = map.get(id);
+        if (!existing || mission.remainingHours < existing.remainingHours) {
+          map.set(id, mission);
+        }
+      }
+    }
+    return map;
+  }, [activeMissionsAll]);
 
   const rewardModifier = useMemo(
     () =>
@@ -269,7 +290,13 @@ export const LocationApp = () => {
     createHourAccumulator(SPEEDS[2], initialScenario.nowHours),
   );
   const [toasts, setToasts] = useState<
-    Array<{ id: string; message: string }>
+    Array<{
+      id: string;
+      parts: Array<
+        | { kind: "text"; value: string }
+        | { kind: "location"; value: string; locationId: string }
+      >;
+    }>
   >([]);
   const lastEventIdRef = useRef<string | null>(null);
 
@@ -292,7 +319,19 @@ export const LocationApp = () => {
 
   const pushToast = (message: string) => {
     const id = `toast-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    setToasts((prev) => [...prev, { id, message }]);
+    setToasts((prev) => [...prev, { id, parts: [{ kind: "text", value: message }] }]);
+  };
+  const jumpToLocation = (locationId: string) => {
+    setSelectedLocationId(locationId);
+    setMapLevel("planet");
+    const location = locationById.get(locationId);
+    if (location) {
+      setSelectedPlanetId(location.planetId);
+      const planet = planetById.get(location.planetId);
+      if (planet) {
+        setSelectedSectorId(planet.sectorId);
+      }
+    }
   };
 
   const handleSave = () => {
@@ -490,21 +529,49 @@ export const LocationApp = () => {
       return;
     }
     lastEventIdRef.current = latest.id;
-    const message =
+    const makeLocationPart = (locationId: string) => ({
+      kind: "location" as const,
+      value: getLocationLabel(locationId),
+      locationId,
+    });
+    const parts =
       latest.kind === "mission"
-        ? `${latest.success ? "Successful" : "Failed"} mission by ${
-            latest.personnelIds
-              .map((id) => personnelById.get(id)?.name ?? id)
-              .join(", ")
-          } at ${getLocationLabel(latest.locationId)}`
+        ? ([
+            {
+              kind: "text",
+              value: `${latest.success ? "Successful" : "Failed"} mission by ${
+                latest.personnelIds
+                  .map((id) => personnelById.get(id)?.name ?? id)
+                  .join(", ")
+              } at `,
+            },
+            makeLocationPart(latest.locationId),
+          ] as const)
         : latest.status === "started"
-          ? `${personnelById.get(latest.personnelId)?.name ?? latest.personnelId} departed ${
-              getLocationLabel(latest.fromLocationId)
-            } for ${getLocationLabel(latest.toLocationId)} (${latest.travelHours ?? 0}h)`
-          : `${personnelById.get(latest.personnelId)?.name ?? latest.personnelId} arrived at ${
-              getLocationLabel(latest.toLocationId)
-            } from ${getLocationLabel(latest.fromLocationId)}`;
-    const toast = { id: latest.id, message };
+          ? ([
+              {
+                kind: "text",
+                value: `${
+                  personnelById.get(latest.personnelId)?.name ?? latest.personnelId
+                } departed `,
+              },
+              makeLocationPart(latest.fromLocationId),
+              { kind: "text", value: " for " },
+              makeLocationPart(latest.toLocationId),
+              { kind: "text", value: ` (${latest.travelHours ?? 0}h)` },
+            ] as const)
+          : ([
+              {
+                kind: "text",
+                value: `${
+                  personnelById.get(latest.personnelId)?.name ?? latest.personnelId
+                } arrived at `,
+              },
+              makeLocationPart(latest.toLocationId),
+              { kind: "text", value: " from " },
+              makeLocationPart(latest.fromLocationId),
+            ] as const);
+    const toast = { id: latest.id, parts: [...parts] };
     setToasts((prev) => [...prev, toast]);
   }, [state.eventLog, personnelById, locationById, planetById, sectorById]);
 
@@ -552,6 +619,23 @@ export const LocationApp = () => {
   }, [locationById, selectedLocationId, state.locations]);
 
   useEffect(() => {
+    const header = headerRef.current;
+    const panel = consolePanelRef.current;
+    if (!header || !panel || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const updateSize = () => {
+      const rect = panel.getBoundingClientRect();
+      header.style.setProperty("--console-width", `${Math.ceil(rect.width)}px`);
+      header.style.setProperty("--console-height", `${Math.ceil(rect.height)}px`);
+    };
+    updateSize();
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const location = locationById.get(selectedLocationId);
     if (!location) {
       return;
@@ -570,7 +654,22 @@ export const LocationApp = () => {
       <div className="toast-stack">
         {toasts.map((toast) => (
           <div key={toast.id} className="toast">
-            <span>{toast.message}</span>
+            <span>
+              {toast.parts.map((part, index) =>
+                part.kind === "location" ? (
+                  <button
+                    key={`${toast.id}-loc-${part.locationId}-${index}`}
+                    type="button"
+                    className="toast-location"
+                    onClick={() => jumpToLocation(part.locationId)}
+                  >
+                    {part.value}
+                  </button>
+                ) : (
+                  <span key={`${toast.id}-text-${index}`}>{part.value}</span>
+                ),
+              )}
+            </span>
             <button
               type="button"
               className="toast-close"
@@ -584,19 +683,13 @@ export const LocationApp = () => {
           </div>
         ))}
       </div>
-      <header className="header">
-        <div className="header-left">
-          <div>
-            <h1>Uprise</h1>
-            <p>Faction: {state.faction}</p>
-          </div>
-        </div>
-        <div className="header-missions card">
+      <header className="header" ref={headerRef}>
+        <div className="card header-missions">
           <h2>Completing Soon</h2>
           {activeMissions.filter((mission) => mission.remainingHours <= 5).length === 0 ? (
             <p>No assignments finishing soon.</p>
           ) : (
-            <ul>
+            <ul className="header-missions-list">
               {activeMissions
                 .filter((mission) => mission.remainingHours <= 5)
                 .map((mission) => (
@@ -612,19 +705,21 @@ export const LocationApp = () => {
             </ul>
           )}
         </div>
-        <div className="header-console">
-          <div className="card header-materials">
-            <h2>Materials</h2>
-            <div className="meta">{formatResources(state)}</div>
-            <ul>
-              {state.materials.map((item) => (
-                <li key={item.id}>
-                  <strong>{item.name}</strong> · qty {item.quantity}
-                </li>
-              ))}
-            </ul>
+        <div className="card header-resources">
+          <div className="header-resources-header">
+            <h2 className="header-resources-title">Resources</h2>
+            <div className="meta header-resources-meta">{formatResources(state)}</div>
           </div>
-          <div className="resources">
+          <ul className="header-resources-list">
+            {state.materials.map((item) => (
+              <li key={item.id}>
+                <strong>{item.name}</strong> · qty {item.quantity}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="header-console">
+          <div className="resources" ref={consolePanelRef}>
             <div className="console-menu">
               <button
                 type="button"
@@ -930,6 +1025,14 @@ export const LocationApp = () => {
                   <div className="meta">
                     {person.skills.join(", ")} · {person.status}
                   </div>
+                  {missionByPersonnelId.get(person.id) ? (
+                    <div className="meta">
+                      Mission:{" "}
+                      {planById.get(missionByPersonnelId.get(person.id)!.planId)?.name ??
+                        missionByPersonnelId.get(person.id)!.planId}{" "}
+                      · {missionByPersonnelId.get(person.id)!.remainingHours}h left
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1056,6 +1159,28 @@ export const LocationApp = () => {
             );
           })() : (
             <div className="meta">Select an assignment to see details.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid">
+        <div className="card">
+          <h2>All Assignments</h2>
+          {activeMissionsAll.length === 0 ? (
+            <p>No active missions.</p>
+          ) : (
+            <ul>
+              {activeMissionsAll.map((mission) => (
+                <li key={mission.id}>
+                  {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
+                  {getLocationLabel(mission.locationId)} · {mission.remainingHours}h
+                  left · pers{" "}
+                  {mission.assignedPersonnelIds
+                    .map((id) => personnelById.get(id)?.name ?? id)
+                    .join(", ")}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </section>

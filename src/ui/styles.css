@@ -18,37 +18,29 @@ body {
 
 .header {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.4fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(260px, 1fr) var(--console-width, 260px) var(
+      --console-width,
+      260px
+    );
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
   margin-bottom: 24px;
   position: sticky;
   top: 0;
   z-index: 5;
   background: #0d1117;
-  padding: 12px 0;
-}
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 8px 0;
 }
 
 .header-console {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
   justify-content: flex-end;
+  align-items: flex-start;
+  width: 100%;
 }
 
-.header-materials {
-  margin: 0;
-  max-height: 180px;
-  overflow: hidden;
-}
-.header-missions {
-  min-height: 120px;
+.header .card {
+  height: 100%;
 }
 
 .resources {
@@ -57,7 +49,61 @@ body {
   background: #161b22;
   border-radius: 10px;
   width: fit-content;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   position: relative;
+}
+
+.header-resources {
+  width: 100%;
+  height: var(--console-height, auto);
+  max-height: 200px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.header-resources-list,
+.header-missions-list {
+  margin-top: 6px;
+}
+
+.header-resources-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.header-resources-title {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.header-resources-meta {
+  margin-top: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.header-resources-list {
+  margin-top: 0;
+  overflow: auto;
+  padding-right: 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+.header-missions {
+  width: 100%;
+  height: var(--console-height, auto);
+  overflow: hidden;
+}
+.header-console .actions {
+  margin-top: 8px;
 }
 
 .grid {
@@ -541,5 +587,20 @@ button:hover {
 }
 
 .toast-close:hover {
+  color: #dbeafe;
+}
+
+.toast-location {
+  background: transparent;
+  border: none;
+  color: #e6edf3;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.toast-location:hover {
   color: #dbeafe;
 }
