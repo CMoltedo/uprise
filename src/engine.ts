@@ -227,19 +227,30 @@ export const validateAssignment = (
   state: GameState,
   plan: MissionPlan,
   personnel: Personnel[],
+  locationId?: string,
 ): string[] => {
   const errors: string[] = [];
   if (personnel.length === 0) {
     errors.push("No personnel selected");
     return errors;
   }
-  const locationId = personnel[0].locationId;
+  const targetLocationId = locationId ?? personnel[0].locationId;
+  const targetLocation = getLocation(state, targetLocationId);
+  if (!targetLocation) {
+    errors.push("Assignment target location not found.");
+    return errors;
+  }
+  const targetPlanetId = targetLocation.planetId;
   for (const person of personnel) {
     if (person.status !== "idle") {
       errors.push(`${person.name} is not idle`);
     }
-    if (person.locationId !== locationId) {
-      errors.push(`${person.name} is not at ${locationId}`);
+    const personLocation = getLocation(state, person.locationId);
+    if (!personLocation || personLocation.planetId !== targetPlanetId) {
+      const planetName =
+        state.planets.find((planet) => planet.id === targetPlanetId)?.name ??
+        targetPlanetId;
+      errors.push(`${person.name} is not on ${planetName}`);
     }
   }
 
@@ -256,7 +267,7 @@ export const validateAssignment = (
     errors.push("Assignment is not available at this time.");
   }
   if (!plan.availability || plan.availability.type !== "global") {
-    const offer = getActiveOffer(state, plan.id, locationId);
+    const offer = getActiveOffer(state, plan.id, targetLocationId);
     if (!offer) {
       errors.push("Assignment is not currently available at this location.");
     }
@@ -269,6 +280,7 @@ export const assignPersonnelToMission = (
   state: GameState,
   planId: string,
   personnelIds: string[],
+  locationId?: string,
 ): GameState => {
   const plan = getMissionPlan(state, planId);
   if (!plan) {
@@ -282,16 +294,16 @@ export const assignPersonnelToMission = (
     throw new Error("One or more personnel not found");
   }
 
-  const errors = validateAssignment(state, plan, personnel);
+  const targetLocationId = locationId ?? personnel[0].locationId;
+  const errors = validateAssignment(state, plan, personnel, targetLocationId);
   if (errors.length > 0) {
     throw new Error(errors.join("; "));
   }
 
-  const locationId = personnel[0].locationId;
   const mission: MissionInstance = {
     id: `mission-${Date.now()}`,
     planId: plan.id,
-    locationId,
+    locationId: targetLocationId,
     assignedPersonnelIds: personnelIds,
     status: "active",
     remainingHours: plan.durationHours,
@@ -301,7 +313,7 @@ export const assignPersonnelToMission = (
   const offerToConsume =
     plan.availability?.type === "global"
       ? null
-      : getActiveOffer(state, plan.id, locationId);
+      : getActiveOffer(state, plan.id, targetLocationId);
 
   return {
     ...state,

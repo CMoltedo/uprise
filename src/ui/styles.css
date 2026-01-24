@@ -11,17 +11,44 @@ body {
 
 .page {
   padding: 24px;
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   position: relative;
 }
 
 .header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.4fr) minmax(260px, 1fr);
   gap: 16px;
+  align-items: start;
   margin-bottom: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #0d1117;
+  padding: 12px 0;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header-console {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.header-materials {
+  margin: 0;
+  max-height: 180px;
+  overflow: hidden;
+}
+.header-missions {
+  min-height: 120px;
 }
 
 .resources {
@@ -29,6 +56,8 @@ body {
   padding: 12px 16px;
   background: #161b22;
   border-radius: 10px;
+  width: fit-content;
+  position: relative;
 }
 
 .grid {
@@ -60,32 +89,54 @@ ul {
   margin-top: 4px;
 }
 
-.time-indicator {
+.time-indicator-grid {
   margin-top: 8px;
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "date dial"
+    "speed dial";
+  gap: 6px 8px;
   align-items: center;
-  gap: 12px;
+}
+
+.date-indicator {
+  grid-area: date;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.speed-indicator {
+  grid-area: speed;
+  text-align: center;
+}
+
+.time-dial-wrap {
+  grid-area: dial;
 }
 
 .date-indicator {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
   padding: 8px 10px;
   border-radius: 10px;
   background: #0d1117;
   border: 1px solid #30363d;
-  min-width: 82px;
-  text-align: center;
+  min-width: 120px;
 }
 
-.date-year {
-  font-size: 1rem;
-  font-weight: 600;
+.date-line {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
+  white-space: nowrap;
+}
+
+.date-year-text {
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .date-icon {
@@ -180,6 +231,40 @@ ul {
   margin-top: 12px;
 }
 
+.speed-button {
+  min-width: 120px;
+}
+
+.console-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.console-menu-trigger {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.console-menu-panel {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  z-index: 2;
+}
+
 .personnel-cards {
   display: flex;
   flex-direction: column;
@@ -222,6 +307,16 @@ ul {
   background: #0b1220;
 }
 
+.mission-drop.is-over-invalid {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.mission-drop.is-selected {
+  opacity: 0.85;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.5);
+}
+
 .map-svg {
   width: 100%;
   height: 260px;
@@ -243,9 +338,80 @@ ul {
   gap: 12px;
 }
 
+.map-panel .map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.map-breadcrumbs {
+  display: flex;
+  gap: 6px;
+}
+
+.map-breadcrumbs button {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.map-breadcrumbs button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.map-tile {
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 12px;
+  background: #0d1117;
+  color: #e6edf3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-tile:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.map-tile-title {
+  font-weight: 600;
+}
+
+.map-tile-meta {
+  font-size: 0.8rem;
+  color: #9da7b3;
+}
+
+.map-label {
+  font-size: 6px;
+  fill: #9da7b3;
+}
+
 .map-node {
   cursor: pointer;
   fill: #7dd3fc;
+}
+
+.map-node.is-drop-over {
+  fill: #22c55e;
+}
+
+.map-node.is-drop-invalid {
+  fill: #f87171;
 }
 
 .map-sector polygon {
@@ -263,6 +429,23 @@ ul {
   fill: rgba(125, 211, 252, 0.06);
   stroke: rgba(125, 211, 252, 0.2);
   stroke-width: 0.6;
+}
+
+.map-sector-rect rect {
+  fill: rgba(125, 211, 252, 0.06);
+  stroke: rgba(125, 211, 252, 0.35);
+  stroke-width: 0.8;
+  cursor: pointer;
+}
+
+.map-sector-rect.selected rect {
+  fill: rgba(34, 197, 94, 0.2);
+  stroke: #22c55e;
+}
+
+.map-sector-rect.is-empty rect {
+  fill: rgba(148, 163, 184, 0.08);
+  stroke: rgba(148, 163, 184, 0.25);
 }
 
 .map-node text {

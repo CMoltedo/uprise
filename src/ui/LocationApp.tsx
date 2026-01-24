@@ -10,13 +10,7 @@ import {
 import type { GameState, Personnel } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
-import {
-  SPEEDS,
-  createHourAccumulator,
-  formatInUniverseTime,
-  getHourOfDay,
-  getUniverseDate,
-} from "../time.js";
+import { SPEEDS, createHourAccumulator, getHourOfDay, getUniverseDate } from "../time.js";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
 import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
@@ -33,13 +27,21 @@ export const LocationApp = () => {
 
   const [state, setState] = useState<GameState>(() => initialScenario);
   const [speedIndex, setSpeedIndex] = useState<number>(2);
+  const [mapLevel, setMapLevel] = useState<"galaxy" | "sector" | "planet">(
+    "galaxy",
+  );
+  const [selectedSectorId, setSelectedSectorId] = useState<string>(
+    initialScenario.sectors[0]?.id ?? "",
+  );
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string>(
+    initialScenario.planets[0]?.id ?? "",
+  );
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
     initialScenario.locations[0]?.id ?? "",
   );
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     initialScenario.missionPlans[0]?.id ?? "",
   );
-  const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>("");
   const [travelPersonnelId, setTravelPersonnelId] = useState<string>(
     initialScenario.personnel[0]?.id ?? "",
   );
@@ -48,6 +50,10 @@ export const LocationApp = () => {
   );
   const [travelHours, setTravelHours] = useState<number>(12);
   const [dragPlanId, setDragPlanId] = useState<string | null>(null);
+  const [hoverPlanId, setHoverPlanId] = useState<string | null>(null);
+  const [dragPersonnelId, setDragPersonnelId] = useState<string | null>(null);
+  const [mapDropLocationId, setMapDropLocationId] = useState<string | null>(null);
+  const [showConsoleMenu, setShowConsoleMenu] = useState<boolean>(false);
 
   const locationById = useMemo(
     () => new Map(state.locations.map((location) => [location.id, location])),
@@ -83,19 +89,84 @@ export const LocationApp = () => {
     () => locationById.get(selectedLocationId) ?? null,
     [locationById, selectedLocationId],
   );
-  const locationPersonnel = useMemo(
-    () =>
-      state.personnel.filter((person) => person.locationId === selectedLocationId),
-    [state.personnel, selectedLocationId],
-  );
-  const selectedPersonnel = useMemo(() => {
-    if (!selectedPersonnelId) {
-      return null;
+  const personnelByLocationId = useMemo(() => {
+    const map = new Map<string, Personnel[]>();
+    for (const person of state.personnel) {
+      const existing = map.get(person.locationId);
+      if (existing) {
+        existing.push(person);
+      } else {
+        map.set(person.locationId, [person]);
+      }
     }
-    return (
-      state.personnel.find((person) => person.id === selectedPersonnelId) ?? null
+    return map;
+  }, [state.personnel]);
+  const personnelCountByPlanetId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const person of state.personnel) {
+      const location = locationById.get(person.locationId);
+      if (!location) {
+        continue;
+      }
+      map.set(location.planetId, (map.get(location.planetId) ?? 0) + 1);
+    }
+    return map;
+  }, [state.personnel, locationById]);
+  const personnelCountBySectorId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const person of state.personnel) {
+      const location = locationById.get(person.locationId);
+      if (!location) {
+        continue;
+      }
+      const planet = planetById.get(location.planetId);
+      if (!planet) {
+        continue;
+      }
+      map.set(planet.sectorId, (map.get(planet.sectorId) ?? 0) + 1);
+    }
+    return map;
+  }, [state.personnel, locationById, planetById]);
+  const sectorPlanets = useMemo(
+    () => state.planets.filter((planet) => planet.sectorId === selectedSectorId),
+    [state.planets, selectedSectorId],
+  );
+  const planetLocations = useMemo(
+    () => state.locations.filter((location) => location.planetId === selectedPlanetId),
+    [state.locations, selectedPlanetId],
+  );
+  const locationPersonnel = useMemo(() => {
+    if (mapLevel === "galaxy") {
+      return state.personnel;
+    }
+    if (mapLevel === "sector") {
+      return state.personnel.filter((person) => {
+        const location = locationById.get(person.locationId);
+        if (!location) {
+          return false;
+        }
+        const planet = planetById.get(location.planetId);
+        return planet?.sectorId === selectedSectorId;
+      });
+    }
+    if (mapLevel === "planet") {
+      return state.personnel.filter((person) => {
+        const location = locationById.get(person.locationId);
+        return location?.planetId === selectedPlanetId;
+      });
+    }
+    return state.personnel.filter(
+      (person) => person.locationId === selectedLocationId,
     );
-  }, [selectedPersonnelId, state.personnel]);
+  }, [
+    mapLevel,
+    state.personnel,
+    selectedLocationId,
+    selectedSectorId,
+    selectedPlanetId,
+    locationById,
+    planetById,
+  ]);
 
   const availableOffers = useMemo(
     () => state.missionOffers.filter((offer) => offer.locationId === selectedLocationId),
@@ -125,6 +196,50 @@ export const LocationApp = () => {
     );
     return [...plansFromOffers, ...globalPlans, ...timePlans];
   }, [availableOffers, state.missionPlans, state.nowHours]);
+  const timePlanCount = useMemo(
+    () =>
+      state.missionPlans.filter(
+        (plan) =>
+          plan.availability?.type === "time" &&
+          state.nowHours >= plan.availability.startHours &&
+          state.nowHours <= plan.availability.endHours,
+      ).length,
+    [state.missionPlans, state.nowHours],
+  );
+  const missionCountByLocationId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const location of state.locations) {
+      map.set(location.id, timePlanCount);
+    }
+    for (const offer of state.missionOffers) {
+      map.set(offer.locationId, (map.get(offer.locationId) ?? 0) + 1);
+    }
+    return map;
+  }, [state.locations, state.missionOffers, timePlanCount]);
+  const getPlanSortValue = (plan: typeof availablePlans[number]) => {
+    const offerHours = offerHoursByPlanId.get(plan.id);
+    if (offerHours !== undefined) {
+      return offerHours;
+    }
+    if (plan.availability?.type === "time") {
+      return Math.max(0, plan.availability.endHours - state.nowHours);
+    }
+    if (plan.availability?.type === "global") {
+      return -1;
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+  const sortedAvailablePlans = useMemo(
+    () =>
+      [...availablePlans].sort((a, b) => {
+        const diff = getPlanSortValue(a) - getPlanSortValue(b);
+        if (diff !== 0) {
+          return diff;
+        }
+        return a.name.localeCompare(b.name);
+      }),
+    [availablePlans, offerHoursByPlanId, state.nowHours],
+  );
 
   const selectedPlan = useMemo(
     () => state.missionPlans.find((plan) => plan.id === selectedPlanId),
@@ -135,15 +250,6 @@ export const LocationApp = () => {
       availableOffers.find((offer) => offer.planId === selectedPlanId) ?? null,
     [availableOffers, selectedPlanId],
   );
-  const assignmentErrors = useMemo(() => {
-    if (!selectedPlan) {
-      return ["Select an assignment."];
-    }
-    if (!selectedPersonnel) {
-      return ["Select personnel."];
-    }
-    return validateAssignment(state, selectedPlan, [selectedPersonnel]);
-  }, [selectedPlan, selectedPersonnel, state]);
   const activeMissions = useMemo(
     () =>
       state.missions.filter(
@@ -158,7 +264,6 @@ export const LocationApp = () => {
       selectedLocation ? getMaterialRewardModifier(state, selectedLocation.id) : null,
     [selectedLocation, state],
   );
-  const missionListRows = Math.max(4, availablePlans.length);
 
   const timeAccumulatorRef = useRef(
     createHourAccumulator(SPEEDS[2], initialScenario.nowHours),
@@ -208,35 +313,14 @@ export const LocationApp = () => {
       return;
     }
     setState(loaded);
+    setMapLevel("galaxy");
+    setSelectedSectorId(loaded.sectors[0]?.id ?? "");
+    setSelectedPlanetId(loaded.planets[0]?.id ?? "");
     setSelectedLocationId(loaded.locations[0]?.id ?? "");
     setSelectedPlanId(loaded.missionPlans[0]?.id ?? "");
-    setSelectedPersonnelId("");
     setTravelPersonnelId(loaded.personnel[0]?.id ?? "");
     setTravelDestinationId(loaded.locations[0]?.id ?? "");
     pushToast("Game loaded from local save.");
-  };
-
-  const handleAssign = () => {
-    try {
-      if (!selectedPlanId) {
-        alert("Select a mission first.");
-        return;
-      }
-      if (!selectedPersonnelId) {
-        alert("Select personnel.");
-        return;
-      }
-      const next = assignPersonnelToMission(
-        state,
-        selectedPlanId,
-        [selectedPersonnelId],
-      );
-      setState(next);
-      setSelectedPersonnelId("");
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : "Assignment failed");
-    }
   };
 
   const handleAssignTravel = () => {
@@ -258,16 +342,30 @@ export const LocationApp = () => {
     }
   };
 
+  const canTravelTo = (person: Personnel | null, locationId: string) => {
+    if (!person) {
+      return false;
+    }
+    if (person.status !== "idle") {
+      return false;
+    }
+    return person.locationId !== locationId;
+  };
+
   const handleDragStart =
     (personId: string) => (event: DragEvent<HTMLDivElement>) => {
       event.dataTransfer.setData("text/plain", personId);
       event.dataTransfer.effectAllowed = "move";
+      setDragPersonnelId(personId);
     };
 
   const handleDropOnPlan =
     (planId: string) => (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       setDragPlanId(null);
+      setHoverPlanId(null);
+      setDragPersonnelId(null);
+      setMapDropLocationId(null);
       const personId = event.dataTransfer.getData("text/plain");
       if (!personId) {
         return;
@@ -277,17 +375,46 @@ export const LocationApp = () => {
       if (!person || !plan) {
         return;
       }
-      const errors = validateAssignment(state, plan, [person]);
+      const errors = validateAssignment(state, plan, [person], selectedLocationId);
       if (errors.length > 0) {
         pushToast(errors[0]);
         setSelectedPlanId(planId);
-        setSelectedPersonnelId(personId);
         return;
       }
-      const next = assignPersonnelToMission(state, planId, [personId]);
+      const next = assignPersonnelToMission(
+        state,
+        planId,
+        [personId],
+        selectedLocationId,
+      );
       setState(next);
       setSelectedPlanId(planId);
-      setSelectedPersonnelId("");
+    };
+
+  const handleDropOnLocation =
+    (locationId: string) => (event: DragEvent<SVGGElement>) => {
+      event.preventDefault();
+      setMapDropLocationId(null);
+      const personId = event.dataTransfer.getData("text/plain");
+      if (!personId) {
+        return;
+      }
+      const person = personnelById.get(personId);
+      if (!person) {
+        return;
+      }
+      if (!canTravelTo(person, locationId)) {
+        pushToast("Cannot travel: agent is busy or already there.");
+        return;
+      }
+      try {
+        const next = assignTravel(state, personId, locationId, travelHours);
+        setState(next);
+        setSelectedLocationId(locationId);
+      } catch (error) {
+        console.error(error);
+        pushToast(error instanceof Error ? error.message : "Travel failed");
+      }
     };
 
   const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) => {
@@ -323,6 +450,23 @@ export const LocationApp = () => {
     return `${sector?.name ?? planet?.sectorId ?? "unknown sector"} · ${
       planet?.name ?? location.planetId
     } · ${location.name}`;
+  };
+
+  const getContextLabel = () => {
+    if (mapLevel === "galaxy") {
+      return "Galaxy";
+    }
+    if (mapLevel === "sector") {
+      return sectorById.get(selectedSectorId)?.name ?? "Unknown sector";
+    }
+    if (mapLevel === "planet") {
+      const planet = planetById.get(selectedPlanetId);
+      const sector = planet ? sectorById.get(planet.sectorId) : null;
+      return `${sector?.name ?? planet?.sectorId ?? "Unknown sector"} · ${
+        planet?.name ?? "Unknown planet"
+      }`;
+    }
+    return getLocationLabel(selectedLocationId);
   };
 
   useEffect(() => {
@@ -401,18 +545,25 @@ export const LocationApp = () => {
   }, [year, month, day, hourOfDay]);
 
   useEffect(() => {
-    if (locationPersonnel.find((person) => person.id === selectedPersonnelId)) {
-      return;
-    }
-    setSelectedPersonnelId(locationPersonnel[0]?.id ?? "");
-  }, [locationPersonnel, selectedPersonnelId]);
-
-  useEffect(() => {
     if (locationById.has(selectedLocationId)) {
       return;
     }
     setSelectedLocationId(state.locations[0]?.id ?? "");
   }, [locationById, selectedLocationId, state.locations]);
+
+  useEffect(() => {
+    const location = locationById.get(selectedLocationId);
+    if (!location) {
+      return;
+    }
+    if (location.planetId !== selectedPlanetId) {
+      setSelectedPlanetId(location.planetId);
+    }
+    const planet = planetById.get(location.planetId);
+    if (planet && planet.sectorId !== selectedSectorId) {
+      setSelectedSectorId(planet.sectorId);
+    }
+  }, [locationById, planetById, selectedLocationId, selectedPlanetId, selectedSectorId]);
 
   return (
     <div className="page">
@@ -434,87 +585,305 @@ export const LocationApp = () => {
         ))}
       </div>
       <header className="header">
-        <div>
-          <h1>Uprise</h1>
-          <p>Faction: {state.faction}</p>
+        <div className="header-left">
+          <div>
+            <h1>Uprise</h1>
+            <p>Faction: {state.faction}</p>
+          </div>
         </div>
-        <div className="resources">
-          <div>{formatResources(state)}</div>
-          <div className="time-indicator">
-            <div className="date-indicator">
-              <div className="date-year">
-                <span className="date-icon">🗓️</span>
-                <span key={yearFlashKey} className="flash-text">
-                  {year}
-                </span>
-              </div>
-              <div className="date-md">
-                <span key={monthFlashKey} className="flash-text">
-                  {month.toString().padStart(2, "0")}
-                </span>
-                -
-                <span key={dayFlashKey} className="flash-text">
-                  {day.toString().padStart(2, "0")}
-                </span>
-              </div>
-              <div className="date-md">{formatInUniverseTime(state.nowHours)}</div>
-            </div>
-            <div key={dialFlashKey} className="time-dial-wrap">
-              <div
-                className="time-dial"
-                style={{ ["--dial-fill" as string]: `${hourFill}%` }}
+        <div className="header-missions card">
+          <h2>Completing Soon</h2>
+          {activeMissions.filter((mission) => mission.remainingHours <= 5).length === 0 ? (
+            <p>No assignments finishing soon.</p>
+          ) : (
+            <ul>
+              {activeMissions
+                .filter((mission) => mission.remainingHours <= 5)
+                .map((mission) => (
+                  <li key={mission.id}>
+                    {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
+                    {getLocationLabel(mission.locationId)} ·{" "}
+                    {mission.remainingHours}h remaining · pers{" "}
+                    {mission.assignedPersonnelIds
+                      .map((id) => personnelById.get(id)?.name ?? id)
+                      .join(", ")}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+        <div className="header-console">
+          <div className="card header-materials">
+            <h2>Materials</h2>
+            <div className="meta">{formatResources(state)}</div>
+            <ul>
+              {state.materials.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.name}</strong> · qty {item.quantity}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="resources">
+            <div className="console-menu">
+              <button
+                type="button"
+                className="console-menu-trigger"
+                aria-label="Open command menu"
+                onClick={() => setShowConsoleMenu((prev) => !prev)}
               >
-                <div className="time-dial-center" />
-                <div className="time-dial-label">{hourOfDay}h</div>
+                ⋮
+              </button>
+              {showConsoleMenu ? (
+                <div className="console-menu-panel">
+                  <button type="button" onClick={handleSave}>
+                    Save
+                  </button>
+                  <button type="button" onClick={handleLoad}>
+                    Load
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="time-indicator-grid">
+              <div className="date-indicator">
+                <div className="date-line">
+                  <span className="date-icon">🗓️</span>
+                  <span key={yearFlashKey} className="date-year-text flash-text">
+                    {year}
+                  </span>
+                  <span className="date-md">
+                    <span key={monthFlashKey} className="flash-text">
+                      {month.toString().padStart(2, "0")}
+                    </span>
+                    -
+                    <span key={dayFlashKey} className="flash-text">
+                      {day.toString().padStart(2, "0")}
+                    </span>
+                  </span>
+                  <span className="date-md">{hourOfDay}h</span>
+                </div>
+              </div>
+              <div className="speed-indicator meta">
+                Speed: {SPEEDS[speedIndex]?.label}
+              </div>
+              <div key={dialFlashKey} className="time-dial-wrap">
+                <div
+                  className="time-dial"
+                  style={{ ["--dial-fill" as string]: `${hourFill}%` }}
+                >
+                  <div className="time-dial-center" />
+                  <div className="time-dial-label">{hourOfDay}h</div>
+                </div>
               </div>
             </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="speed-button"
+                onClick={() => setSpeedIndex((prev) => Math.max(0, prev - 1))}
+              >
+                Slower
+              </button>
+              <button
+                type="button"
+                className="speed-button"
+                onClick={() =>
+                  setSpeedIndex((prev) => Math.min(SPEEDS.length - 1, prev + 1))
+                }
+              >
+                Faster
+              </button>
+            </div>
           </div>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={() => setSpeedIndex((prev) => Math.max(0, prev - 1))}
-            >
-              Slower
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSpeedIndex((prev) => Math.min(SPEEDS.length - 1, prev + 1))
-              }
-            >
-              Faster
-            </button>
-            <button type="button" onClick={handleSave}>
-              Save
-            </button>
-            <button type="button" onClick={handleLoad}>
-              Load
-            </button>
-          </div>
-          <div className="meta">Speed: {SPEEDS[speedIndex]?.label}</div>
         </div>
       </header>
 
+      <section className="card map-panel">
+        <div className="map-header">
+          <h2>Galaxy Map</h2>
+          <div className="map-breadcrumbs">
+            <button type="button" onClick={() => setMapLevel("galaxy")}>
+              Galaxy
+            </button>
+            <button
+              type="button"
+              onClick={() => selectedSectorId && setMapLevel("sector")}
+              disabled={!selectedSectorId}
+            >
+              Sector
+            </button>
+            <button
+              type="button"
+              onClick={() => selectedPlanetId && setMapLevel("planet")}
+              disabled={!selectedPlanetId}
+            >
+              Planet
+            </button>
+          </div>
+        </div>
+        {mapLevel === "galaxy" ? (
+          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+            {[
+              { x: 5, y: 5 },
+              { x: 61, y: 5 },
+              { x: 5, y: 61 },
+              { x: 61, y: 61 },
+            ].map((position, index) => {
+              const sector = state.sectors[index];
+              const count = sector
+                ? personnelCountBySectorId.get(sector.id) ?? 0
+                : 0;
+              if (!sector) {
+                return (
+                  <g key={`sector-slot-${index}`}>
+                    <rect
+                      x={position.x}
+                      y={position.y}
+                      width={54}
+                      height={54}
+                      rx={6}
+                      className="map-sector-rect is-empty"
+                    />
+                    <text
+                      x={position.x + 27}
+                      y={position.y + 30}
+                      className="map-label"
+                      textAnchor="middle"
+                    >
+                      Uncharted
+                    </text>
+                  </g>
+                );
+              }
+              const isSelected = sector.id === selectedSectorId;
+              return (
+                <g
+                  key={sector.id}
+                  className={`map-sector-rect${isSelected ? " selected" : ""}`}
+                  onClick={() => {
+                    setSelectedSectorId(sector.id);
+                    setMapLevel("sector");
+                  }}
+                >
+                  <rect x={position.x} y={position.y} width={54} height={54} rx={6} />
+                  <text
+                    x={position.x + 27}
+                    y={position.y + 26}
+                    className="map-label"
+                    textAnchor="middle"
+                  >
+                    {sector.name}
+                  </text>
+                  <text
+                    x={position.x + 27}
+                    y={position.y + 40}
+                    className="map-label"
+                    textAnchor="middle"
+                  >
+                    {count} agents
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        ) : mapLevel === "sector" ? (
+          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+            {sectorPlanets.map((planet) => (
+              <g key={planet.id}>
+                <circle
+                  cx={planet.position.x}
+                  cy={planet.position.y}
+                  r={6}
+                  className="map-node"
+                  onClick={() => {
+                    setSelectedPlanetId(planet.id);
+                    setMapLevel("planet");
+                    const firstLocation = state.locations.find(
+                      (location) => location.planetId === planet.id,
+                    );
+                    if (firstLocation) {
+                      setSelectedLocationId(firstLocation.id);
+                    }
+                  }}
+                />
+                <text
+                  x={planet.position.x + 8}
+                  y={planet.position.y + 4}
+                  className="map-label"
+                >
+                  {planet.name}
+                </text>
+                <text
+                  x={planet.position.x + 8}
+                  y={planet.position.y + 12}
+                  className="map-label"
+                >
+                  {personnelCountByPlanetId.get(planet.id) ?? 0} agents
+                </text>
+              </g>
+            ))}
+          </svg>
+        ) : (
+          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+            {planetLocations.map((location) => {
+              const dragPerson = dragPersonnelId
+                ? personnelById.get(dragPersonnelId) ?? null
+                : null;
+              const canDrop = canTravelTo(dragPerson, location.id);
+              const isOver = mapDropLocationId === location.id;
+              return (
+              <g
+                key={location.id}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setMapDropLocationId(location.id);
+                }}
+                onDragLeave={() => setMapDropLocationId(null)}
+                onDrop={handleDropOnLocation(location.id)}
+              >
+                <circle
+                  cx={location.position.x}
+                  cy={location.position.y}
+                  r={4}
+                  className={`map-node map-drop-target${
+                    isOver
+                      ? canDrop
+                        ? " is-drop-over"
+                        : " is-drop-invalid"
+                      : ""
+                  }`}
+                  onClick={() => setSelectedLocationId(location.id)}
+                />
+                <text
+                  x={location.position.x + 6}
+                  y={location.position.y + 4}
+                  className="map-label"
+                >
+                  {location.name}
+                </text>
+                <text
+                  x={location.position.x + 6}
+                  y={location.position.y + 12}
+                  className="map-label"
+                >
+                  {missionCountByLocationId.get(location.id) ?? 0} missions
+                </text>
+              </g>
+            )})}
+          </svg>
+        )}
+        <div className="meta">
+          Selected: {getLocationLabel(selectedLocationId)}
+        </div>
+        <div className="meta">
+          Drag personnel onto a location (planet view) to travel.
+        </div>
+      </section>
+
       <section className="grid">
         <div className="card">
-          <h2>Location Focus</h2>
-          <label className="field">
-            Location
-            <select
-              value={selectedLocationId}
-              onChange={(event) => setSelectedLocationId(event.target.value)}
-              size={Math.max(4, Math.min(8, state.locations.length))}
-              style={{
-                height: `${Math.max(4, Math.min(8, state.locations.length)) * 2.1}rem`,
-              }}
-            >
-              {state.locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {getLocationLabel(location.id)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <h2>Location Info - {getContextLabel()}</h2>
           {selectedLocation ? (
             <div className="meta">
               {getLocationLabel(selectedLocation.id)}
@@ -532,7 +901,7 @@ export const LocationApp = () => {
           ) : (
             <div className="meta">Select a location to see details.</div>
           )}
-          <div className="meta">Personnel here: {locationPersonnel.length}</div>
+          <div className="meta">Personnel in view: {locationPersonnel.length}</div>
           {locationPersonnel.length === 0 ? (
             <p>No personnel at this location.</p>
           ) : (
@@ -550,6 +919,12 @@ export const LocationApp = () => {
                   style={getPersonnelOptionStyle(person)}
                   draggable
                   onDragStart={handleDragStart(person.id)}
+                  onDragEnd={() => {
+                    setDragPlanId(null);
+                    setHoverPlanId(null);
+                    setDragPersonnelId(null);
+                    setMapDropLocationId(null);
+                  }}
                 >
                   <strong>{person.name}</strong>
                   <div className="meta">
@@ -562,59 +937,45 @@ export const LocationApp = () => {
         </div>
 
         <div className="card">
-          <h2>Assignment Planning</h2>
+          <h2>Assignment Planning - {getContextLabel()}</h2>
           <div className="meta">
             Assignments at {getLocationLabel(selectedLocationId)}
           </div>
-          <label className="field">
-            Personnel
-            <select
-              value={selectedPersonnelId}
-              onChange={(event) => setSelectedPersonnelId(event.target.value)}
-              size={Math.max(4, Math.min(8, locationPersonnel.length))}
-              style={{
-                height: `${Math.max(4, Math.min(8, locationPersonnel.length || 4)) * 2.1}rem`,
-              }}
-            >
-              <option value="">-- choose --</option>
-              {locationPersonnel.map((person) => (
-                <option
-                  key={person.id}
-                  value={person.id}
-                  style={getPersonnelOptionStyle(person)}
-                >
-                  {person.name} · {person.skills.join(", ")} · {person.status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Assignment
-            <select
-              value={selectedPlanId}
-              onChange={(event) => setSelectedPlanId(event.target.value)}
-              size={missionListRows}
-              style={{ height: `${missionListRows * 2.1}rem` }}
-            >
-              {availablePlans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {getPlanHoursLeftLabel(plan)} {plan.name} — {plan.summary}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="meta">Drag a personnel card onto a mission to assign.</div>
           <div className="mission-drop-list">
-            {availablePlans.map((plan) => (
+            {sortedAvailablePlans.map((plan) => {
+              const dragPerson = dragPersonnelId
+                ? personnelById.get(dragPersonnelId)
+                : null;
+              const canAssign =
+                dragPerson && dragPlanId === plan.id
+                  ? validateAssignment(
+                      state,
+                      plan,
+                      [dragPerson],
+                      selectedLocationId,
+                    ).length === 0
+                  : true;
+              return (
               <div
                 key={plan.id}
-                className={`mission-drop${dragPlanId === plan.id ? " is-over" : ""}`}
+                className={`mission-drop${
+                  dragPlanId === plan.id
+                    ? canAssign
+                      ? " is-over"
+                      : " is-over-invalid"
+                    : ""
+                }${selectedPlanId === plan.id ? " is-selected" : ""}`}
                 onDragOver={(event) => {
                   event.preventDefault();
                   setDragPlanId(plan.id);
+                  setHoverPlanId(plan.id);
                 }}
                 onDragLeave={() => setDragPlanId(null)}
                 onDrop={handleDropOnPlan(plan.id)}
+                onClick={() => setSelectedPlanId(plan.id)}
+                onMouseEnter={() => setHoverPlanId(plan.id)}
+                onMouseLeave={() => setHoverPlanId(null)}
               >
                 <strong>{plan.name}</strong>
                 <div className="meta">{plan.summary}</div>
@@ -623,35 +984,44 @@ export const LocationApp = () => {
                   {Math.round(plan.baseSuccessChance * 100)}%
                 </div>
               </div>
-            ))}
+            )})}
           </div>
-          {selectedPlan ? (
+          {selectedPlan || hoverPlanId ? (() => {
+            const detailPlan = hoverPlanId
+              ? planById.get(hoverPlanId)
+              : selectedPlan;
+            if (!detailPlan) {
+              return <div className="meta">Select an assignment to see details.</div>;
+            }
+            const detailOffer = hoverPlanId
+              ? availableOffers.find((offer) => offer.planId === hoverPlanId)
+              : selectedOffer;
+            return (
             <div className="meta">
-              {selectedPlan.name} · {selectedPlan.type}
+              {detailPlan.name} · {detailPlan.type}
               <div className="meta">
-                Duration {selectedPlan.durationHours}h · Success{" "}
-                {Math.round(selectedPlan.baseSuccessChance * 100)}%
+                Duration {detailPlan.durationHours}h · Success{" "}
+                {Math.round(detailPlan.baseSuccessChance * 100)}%
               </div>
-              {selectedOffer ? (
+              {detailOffer ? (
                 <div className="meta">
-                  Offer expires {formatInUniverseTime(selectedOffer.expiresAtHours)}
+                  Offer expires {detailOffer.expiresAtHours}h
                 </div>
-              ) : selectedPlan.availability?.type === "global" ? (
+              ) : detailPlan.availability?.type === "global" ? (
                 <div className="meta">Global availability</div>
-              ) : selectedPlan.availability?.type === "time" ? (
+              ) : detailPlan.availability?.type === "time" ? (
                 <div className="meta">
-                  Window {formatInUniverseTime(selectedPlan.availability.startHours)}{" "}
-                  to {formatInUniverseTime(selectedPlan.availability.endHours)}
+                  Window {detailPlan.availability.startHours}h to{" "}
+                  {detailPlan.availability.endHours}h
                 </div>
               ) : null}
               <div className="meta">
-                Skills: {selectedPlan.requiredSkills.join(", ")}
+                Skills: {detailPlan.requiredSkills.join(", ")}
               </div>
-              {selectedPlan.requiredMaterials &&
-              selectedPlan.requiredMaterials.length > 0 ? (
+              {detailPlan.requiredMaterials?.length ? (
                 <div className="meta">
                   Materials:{" "}
-                  {selectedPlan.requiredMaterials
+                  {detailPlan.requiredMaterials
                     .map(
                       (req) =>
                         `${req.quantity}x ${req.materialId} (${Math.round(
@@ -661,15 +1031,15 @@ export const LocationApp = () => {
                     .join(", ")}
                 </div>
               ) : null}
-              {selectedPlan.materialRewardTableId ||
-              missionTypeConfigByType.get(selectedPlan.type)
+              {detailPlan.materialRewardTableId ||
+              missionTypeConfigByType.get(detailPlan.type)
                 ?.defaultMaterialRewardTableId ? (
                 <div className="meta">
                   Materials:{" "}
                   {materialRewardTableById
                     .get(
-                      selectedPlan.materialRewardTableId ??
-                        missionTypeConfigByType.get(selectedPlan.type)
+                      detailPlan.materialRewardTableId ??
+                        missionTypeConfigByType.get(detailPlan.type)
                           ?.defaultMaterialRewardTableId ??
                         "",
                     )
@@ -683,52 +1053,14 @@ export const LocationApp = () => {
                 </div>
               ) : null}
             </div>
-          ) : (
+            );
+          })() : (
             <div className="meta">Select an assignment to see details.</div>
           )}
-          <div className="actions">
-            <button
-              type="button"
-              onClick={handleAssign}
-              disabled={assignmentErrors.length > 0}
-              title={
-                assignmentErrors.length > 0
-                  ? assignmentErrors.join(" ")
-                  : "Assign personnel to this assignment."
-              }
-            >
-              Assign
-            </button>
-            {assignmentErrors.length > 0 ? (
-              <span className="meta" style={{ color: "#f87171" }}>
-                {assignmentErrors[0]}
-              </span>
-            ) : null}
-          </div>
         </div>
       </section>
 
       <section className="grid">
-        <div className="card">
-          <h2>Active Assignments</h2>
-          {activeMissions.length === 0 ? (
-            <p>No active assignments at this location.</p>
-          ) : (
-            <ul>
-              {activeMissions.map((mission) => (
-                <li key={mission.id}>
-                  {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
-                  {getLocationLabel(mission.locationId)} ·{" "}
-                  {mission.remainingHours}h remaining · pers{" "}
-                  {mission.assignedPersonnelIds
-                    .map((id) => personnelById.get(id)?.name ?? id)
-                    .join(", ")}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
         <div className="card">
           <h2>Travel Orders</h2>
           <label className="field">
@@ -738,11 +1070,7 @@ export const LocationApp = () => {
               onChange={(event) => setTravelPersonnelId(event.target.value)}
             >
               {state.personnel.map((person) => (
-                <option
-                  key={person.id}
-                  value={person.id}
-                  style={getPersonnelOptionStyle(person)}
-                >
+                <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
                   {person.name} · {person.skills.join(", ")} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {getLocationLabel(person.locationId)}
@@ -793,17 +1121,6 @@ export const LocationApp = () => {
             <p>No active travel.</p>
           )}
         </div>
-      </section>
-
-      <section className="card">
-        <h2>Materials</h2>
-        <ul>
-          {state.materials.map((item) => (
-            <li key={item.id}>
-              <strong>{item.name}</strong> · qty {item.quantity}
-            </li>
-          ))}
-        </ul>
       </section>
 
       <section className="card">
