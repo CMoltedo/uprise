@@ -7,46 +7,66 @@ import {
   refreshMissionOffers,
   validateAssignment,
 } from "../engine.js";
-import type { GameState, Personnel } from "../models.js";
+import type { GameRuntime, GameState, Personnel } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
 import { SPEEDS, createHourAccumulator, getHourOfDay, getUniverseDate } from "../time.js";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
-import { SAVE_KEY, parseSave, serializeSave, type SaveFileV1 } from "../persistence.js";
+import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
 
-const formatResources = (state: GameState) =>
-  `Cr ${state.resources.credits} · Intel ${state.resources.intel}`;
+const formatResources = (runtime: GameRuntime) =>
+  `Cr ${runtime.resources.credits} · Intel ${runtime.resources.intel}`;
 
 export const LocationApp = () => {
+  const ADMIN_CURRENT_APPLY_KEY = "uprise-admin-current-apply";
+  const readAdminAppliedRuntime = (): GameRuntime | null => {
+    const raw = localStorage.getItem(ADMIN_CURRENT_APPLY_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = parseSave(raw);
+    if (!parsed) {
+      localStorage.removeItem(ADMIN_CURRENT_APPLY_KEY);
+      return null;
+    }
+    localStorage.removeItem(ADMIN_CURRENT_APPLY_KEY);
+    return parsed;
+  };
   const initialScenario = (() => {
     const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
     const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+    const appliedRuntime = readAdminAppliedRuntime();
+    if (appliedRuntime) {
+      return refreshMissionOffers({ ...scenario, runtime: appliedRuntime });
+    }
     return refreshMissionOffers(scenario);
   })();
 
   const [state, setState] = useState<GameState>(() => initialScenario);
+  const data = state.data;
+  const runtime = state.runtime;
   const [speedIndex, setSpeedIndex] = useState<number>(2);
   const [mapLevel, setMapLevel] = useState<"galaxy" | "sector" | "planet">(
     "galaxy",
   );
   const [selectedSectorId, setSelectedSectorId] = useState<string>(
-    initialScenario.sectors[0]?.id ?? "",
+    initialScenario.data.sectors[0]?.id ?? "",
   );
   const [selectedPlanetId, setSelectedPlanetId] = useState<string>(
-    initialScenario.planets[0]?.id ?? "",
+    initialScenario.data.planets[0]?.id ?? "",
   );
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    initialScenario.locations[0]?.id ?? "",
+    initialScenario.data.locations[0]?.id ?? "",
   );
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
-    initialScenario.missionPlans[0]?.id ?? "",
+    initialScenario.data.missionPlans[0]?.id ?? "",
   );
   const [travelPersonnelId, setTravelPersonnelId] = useState<string>(
-    initialScenario.personnel[0]?.id ?? "",
+    initialScenario.runtime.personnel[0]?.id ?? "",
   );
   const [travelDestinationId, setTravelDestinationId] = useState<string>(
-    initialScenario.locations[0]?.id ?? "",
+    initialScenario.data.locations[0]?.id ?? "",
   );
   const [travelHours, setTravelHours] = useState<number>(12);
   const [dragPlanId, setDragPlanId] = useState<string | null>(null);
@@ -68,39 +88,40 @@ export const LocationApp = () => {
   const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
   const [saveMenuMode, setSaveMenuMode] = useState<"save" | "load" | null>(null);
   const [saveSlotsVersion, setSaveSlotsVersion] = useState(0);
+  const [mapMode, setMapMode] = useState<"map" | "locations">("map");
   const headerRef = useRef<HTMLElement | null>(null);
   const consolePanelRef = useRef<HTMLDivElement | null>(null);
   const flashPlanTimeoutRef = useRef<number | null>(null);
   const flashPersonnelTimeoutRef = useRef<number | null>(null);
 
   const locationById = useMemo(
-    () => new Map(state.locations.map((location) => [location.id, location])),
-    [state.locations],
+    () => new Map(data.locations.map((location) => [location.id, location])),
+    [data.locations],
   );
   const sectorById = useMemo(
-    () => new Map(state.sectors.map((sector) => [sector.id, sector])),
-    [state.sectors],
+    () => new Map(data.sectors.map((sector) => [sector.id, sector])),
+    [data.sectors],
   );
   const planetById = useMemo(
-    () => new Map(state.planets.map((planet) => [planet.id, planet])),
-    [state.planets],
+    () => new Map(data.planets.map((planet) => [planet.id, planet])),
+    [data.planets],
   );
   const planById = useMemo(
-    () => new Map(state.missionPlans.map((plan) => [plan.id, plan])),
-    [state.missionPlans],
+    () => new Map(data.missionPlans.map((plan) => [plan.id, plan])),
+    [data.missionPlans],
   );
   const personnelById = useMemo(
-    () => new Map(state.personnel.map((person) => [person.id, person])),
-    [state.personnel],
+    () => new Map(runtime.personnel.map((person) => [person.id, person])),
+    [runtime.personnel],
   );
   const materialRewardTableById = useMemo(
     () =>
-      new Map(state.materialRewardTables.map((table) => [table.id, table])),
-    [state.materialRewardTables],
+      new Map(data.materialRewardTables.map((table) => [table.id, table])),
+    [data.materialRewardTables],
   );
   const missionTypeConfigByType = useMemo(
-    () => new Map(state.missionTypeConfigs.map((config) => [config.type, config])),
-    [state.missionTypeConfigs],
+    () => new Map(data.missionTypeConfigs.map((config) => [config.type, config])),
+    [data.missionTypeConfigs],
   );
 
   const selectedLocation = useMemo(
@@ -109,7 +130,7 @@ export const LocationApp = () => {
   );
   const personnelByLocationId = useMemo(() => {
     const map = new Map<string, Personnel[]>();
-    for (const person of state.personnel) {
+    for (const person of runtime.personnel) {
       const existing = map.get(person.locationId);
       if (existing) {
         existing.push(person);
@@ -118,10 +139,10 @@ export const LocationApp = () => {
       }
     }
     return map;
-  }, [state.personnel]);
+  }, [runtime.personnel]);
   const personnelCountByPlanetId = useMemo(() => {
     const map = new Map<string, number>();
-    for (const person of state.personnel) {
+    for (const person of runtime.personnel) {
       const location = locationById.get(person.locationId);
       if (!location) {
         continue;
@@ -129,10 +150,10 @@ export const LocationApp = () => {
       map.set(location.planetId, (map.get(location.planetId) ?? 0) + 1);
     }
     return map;
-  }, [state.personnel, locationById]);
+  }, [runtime.personnel, locationById]);
   const personnelCountBySectorId = useMemo(() => {
     const map = new Map<string, number>();
-    for (const person of state.personnel) {
+    for (const person of runtime.personnel) {
       const location = locationById.get(person.locationId);
       if (!location) {
         continue;
@@ -144,21 +165,21 @@ export const LocationApp = () => {
       map.set(planet.sectorId, (map.get(planet.sectorId) ?? 0) + 1);
     }
     return map;
-  }, [state.personnel, locationById, planetById]);
+  }, [runtime.personnel, locationById, planetById]);
   const sectorPlanets = useMemo(
-    () => state.planets.filter((planet) => planet.sectorId === selectedSectorId),
-    [state.planets, selectedSectorId],
+    () => data.planets.filter((planet) => planet.sectorId === selectedSectorId),
+    [data.planets, selectedSectorId],
   );
   const planetLocations = useMemo(
-    () => state.locations.filter((location) => location.planetId === selectedPlanetId),
-    [state.locations, selectedPlanetId],
+    () => data.locations.filter((location) => location.planetId === selectedPlanetId),
+    [data.locations, selectedPlanetId],
   );
   const locationPersonnel = useMemo(() => {
     if (mapLevel === "galaxy") {
-      return state.personnel;
+      return runtime.personnel;
     }
     if (mapLevel === "sector") {
-      return state.personnel.filter((person) => {
+      return runtime.personnel.filter((person) => {
         const location = locationById.get(person.locationId);
         if (!location) {
           return false;
@@ -168,17 +189,17 @@ export const LocationApp = () => {
       });
     }
     if (mapLevel === "planet") {
-      return state.personnel.filter((person) => {
+      return runtime.personnel.filter((person) => {
         const location = locationById.get(person.locationId);
         return location?.planetId === selectedPlanetId;
       });
     }
-    return state.personnel.filter(
+    return runtime.personnel.filter(
       (person) => person.locationId === selectedLocationId,
     );
   }, [
     mapLevel,
-    state.personnel,
+    runtime.personnel,
     selectedLocationId,
     selectedSectorId,
     selectedPlanetId,
@@ -187,60 +208,61 @@ export const LocationApp = () => {
   ]);
 
   const availableOffers = useMemo(
-    () => state.missionOffers.filter((offer) => offer.locationId === selectedLocationId),
-    [state.missionOffers, selectedLocationId],
+    () =>
+      runtime.missionOffers.filter((offer) => offer.locationId === selectedLocationId),
+    [runtime.missionOffers, selectedLocationId],
   );
   const offerHoursByPlanId = useMemo(() => {
     const map = new Map<string, number>();
     for (const offer of availableOffers) {
-      const hoursLeft = Math.max(0, offer.expiresAtHours - state.nowHours);
+      const hoursLeft = Math.max(0, offer.expiresAtHours - runtime.nowHours);
       map.set(offer.planId, hoursLeft);
     }
     return map;
-  }, [availableOffers, state.nowHours]);
+  }, [availableOffers, runtime.nowHours]);
   const availablePlans = useMemo(() => {
     const plansFromOffers = availableOffers
-      .map((offer) => state.missionPlans.find((plan) => plan.id === offer.planId))
+      .map((offer) => data.missionPlans.find((plan) => plan.id === offer.planId))
       .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
 
-    const globalPlans = state.missionPlans.filter(
+    const globalPlans = data.missionPlans.filter(
       (plan) => plan.availability?.type === "global",
     );
-    const timePlans = state.missionPlans.filter(
+    const timePlans = data.missionPlans.filter(
       (plan) =>
         plan.availability?.type === "time" &&
-        state.nowHours >= plan.availability.startHours &&
-        state.nowHours <= plan.availability.endHours,
+        runtime.nowHours >= plan.availability.startHours &&
+        runtime.nowHours <= plan.availability.endHours,
     );
     return [...plansFromOffers, ...globalPlans, ...timePlans];
-  }, [availableOffers, state.missionPlans, state.nowHours]);
+  }, [availableOffers, data.missionPlans, runtime.nowHours]);
   const timePlanCount = useMemo(
     () =>
-      state.missionPlans.filter(
+      data.missionPlans.filter(
         (plan) =>
           plan.availability?.type === "time" &&
-          state.nowHours >= plan.availability.startHours &&
-          state.nowHours <= plan.availability.endHours,
+          runtime.nowHours >= plan.availability.startHours &&
+          runtime.nowHours <= plan.availability.endHours,
       ).length,
-    [state.missionPlans, state.nowHours],
+    [data.missionPlans, runtime.nowHours],
   );
   const missionCountByLocationId = useMemo(() => {
     const map = new Map<string, number>();
-    for (const location of state.locations) {
+    for (const location of data.locations) {
       map.set(location.id, timePlanCount);
     }
-    for (const offer of state.missionOffers) {
+    for (const offer of runtime.missionOffers) {
       map.set(offer.locationId, (map.get(offer.locationId) ?? 0) + 1);
     }
     return map;
-  }, [state.locations, state.missionOffers, timePlanCount]);
+  }, [data.locations, runtime.missionOffers, timePlanCount]);
   const getPlanSortValue = (plan: typeof availablePlans[number]) => {
     const offerHours = offerHoursByPlanId.get(plan.id);
     if (offerHours !== undefined) {
       return offerHours;
     }
     if (plan.availability?.type === "time") {
-      return Math.max(0, plan.availability.endHours - state.nowHours);
+      return Math.max(0, plan.availability.endHours - runtime.nowHours);
     }
     if (plan.availability?.type === "global") {
       return -1;
@@ -272,12 +294,12 @@ export const LocationApp = () => {
         }
         return a.name.localeCompare(b.name);
       }),
-    [displayPlans, offerHoursByPlanId, state.nowHours],
+    [displayPlans, offerHoursByPlanId, runtime.nowHours],
   );
 
   const selectedPlan = useMemo(
-    () => state.missionPlans.find((plan) => plan.id === selectedPlanId),
-    [state.missionPlans, selectedPlanId],
+    () => data.missionPlans.find((plan) => plan.id === selectedPlanId),
+    [data.missionPlans, selectedPlanId],
   );
   const selectedOffer = useMemo(
     () =>
@@ -286,21 +308,21 @@ export const LocationApp = () => {
   );
   const activeMissions = useMemo(
     () =>
-      state.missions.filter(
+      runtime.missions.filter(
         (mission) =>
           mission.status === "active" && mission.locationId === selectedLocationId,
       ),
-    [state.missions, selectedLocationId],
+    [runtime.missions, selectedLocationId],
   );
   const activeMissionsAll = useMemo(
     () =>
-      [...state.missions]
+      [...runtime.missions]
         .filter((mission) => mission.status === "active")
         .sort((a, b) => a.remainingHours - b.remainingHours),
-    [state.missions],
+    [runtime.missions],
   );
   const activeMissionByPlanId = useMemo(() => {
-    const map = new Map<string, typeof state.missions[number]>();
+    const map = new Map<string, typeof runtime.missions[number]>();
     for (const mission of activeMissionsAll) {
       const existing = map.get(mission.planId);
       if (!existing || mission.remainingHours < existing.remainingHours) {
@@ -315,16 +337,18 @@ export const LocationApp = () => {
   );
   const expiringSoonOffers = useMemo(
     () =>
-      state.missionOffers
-        .filter((offer) => offer.expiresAtHours - state.nowHours <= 24)
+      runtime.missionOffers
+        .filter((offer) => offer.expiresAtHours - runtime.nowHours <= 24)
         .sort(
           (a, b) =>
-            a.expiresAtHours - state.nowHours - (b.expiresAtHours - state.nowHours),
+            a.expiresAtHours -
+            runtime.nowHours -
+            (b.expiresAtHours - runtime.nowHours),
         ),
-    [state.missionOffers, state.nowHours],
+    [runtime.missionOffers, runtime.nowHours],
   );
   const missionByPersonnelId = useMemo(() => {
-    const map = new Map<string, typeof state.missions[number]>();
+    const map = new Map<string, typeof runtime.missions[number]>();
     for (const mission of activeMissionsAll) {
       for (const id of mission.assignedPersonnelIds) {
         const existing = map.get(id);
@@ -336,8 +360,8 @@ export const LocationApp = () => {
     return map;
   }, [activeMissionsAll]);
   const materialById = useMemo(
-    () => new Map(state.materials.map((item) => [item.id, item])),
-    [state.materials],
+    () => new Map(runtime.materials.map((item) => [item.id, item])),
+    [runtime.materials],
   );
 
   const rewardModifier = useMemo(
@@ -347,7 +371,7 @@ export const LocationApp = () => {
   );
 
   const timeAccumulatorRef = useRef(
-    createHourAccumulator(SPEEDS[2], initialScenario.nowHours),
+    createHourAccumulator(SPEEDS[2], initialScenario.runtime.nowHours),
   );
   const [toasts, setToasts] = useState<
     Array<{
@@ -361,11 +385,11 @@ export const LocationApp = () => {
   >([]);
   const lastEventIdRef = useRef<string | null>(null);
 
-  const nowDate = getUniverseDate(state.nowHours);
+  const nowDate = getUniverseDate(runtime.nowHours);
   const year = nowDate.getUTCFullYear();
   const month = nowDate.getUTCMonth() + 1;
   const day = nowDate.getUTCDate();
-  const hourOfDay = getHourOfDay(state.nowHours);
+  const hourOfDay = getHourOfDay(runtime.nowHours);
   const hourFill = (hourOfDay / 24) * 100;
   const [yearFlashKey, setYearFlashKey] = useState(0);
   const [monthFlashKey, setMonthFlashKey] = useState(0);
@@ -385,6 +409,17 @@ export const LocationApp = () => {
   const jumpToLocation = (locationId: string) => {
     setSelectedLocationId(locationId);
     setMapLevel("planet");
+    const location = locationById.get(locationId);
+    if (location) {
+      setSelectedPlanetId(location.planetId);
+      const planet = planetById.get(location.planetId);
+      if (planet) {
+        setSelectedSectorId(planet.sectorId);
+      }
+    }
+  };
+  const selectLocationForDetails = (locationId: string) => {
+    setSelectedLocationId(locationId);
     const location = locationById.get(locationId);
     if (location) {
       setSelectedPlanetId(location.planetId);
@@ -467,11 +502,20 @@ export const LocationApp = () => {
       return null;
     }
     try {
-      const data = JSON.parse(raw) as Partial<SaveFileV1>;
-      if (data?.version !== 1 || data.app !== "uprise" || !data.state) {
+      const data = JSON.parse(raw) as {
+        app?: string;
+        version?: number;
+        runtime?: { nowHours?: number };
+        state?: { runtime?: { nowHours?: number }; nowHours?: number };
+      };
+      if (data.app !== "uprise") {
         return null;
       }
-      const date = getUniverseDate(data.state.nowHours ?? 0);
+      const nowHours =
+        data.version === 2
+          ? data.runtime?.nowHours ?? 0
+          : data.state?.runtime?.nowHours ?? data.state?.nowHours ?? 0;
+      const date = getUniverseDate(nowHours);
       const year = date.getUTCFullYear();
       const month = String(date.getUTCMonth() + 1).padStart(2, "0");
       const day = String(date.getUTCDate()).padStart(2, "0");
@@ -489,18 +533,18 @@ export const LocationApp = () => {
       })),
     [saveSlotsVersion],
   );
-  const applyLoadedState = (loaded: GameState) => {
-    setState(loaded);
+  const applyLoadedRuntime = (loaded: GameRuntime) => {
+    setState((prev) => ({ ...prev, runtime: loaded }));
     setMapLevel("galaxy");
-    setSelectedSectorId(loaded.sectors[0]?.id ?? "");
-    setSelectedPlanetId(loaded.planets[0]?.id ?? "");
-    setSelectedLocationId(loaded.locations[0]?.id ?? "");
-    setSelectedPlanId(loaded.missionPlans[0]?.id ?? "");
+    setSelectedSectorId(data.sectors[0]?.id ?? "");
+    setSelectedPlanetId(data.planets[0]?.id ?? "");
+    setSelectedLocationId(data.locations[0]?.id ?? "");
+    setSelectedPlanId(data.missionPlans[0]?.id ?? "");
     setTravelPersonnelId(loaded.personnel[0]?.id ?? "");
-    setTravelDestinationId(loaded.locations[0]?.id ?? "");
+    setTravelDestinationId(data.locations[0]?.id ?? "");
   };
   const handleSaveSlot = (slot: number) => {
-    const payload = serializeSave(state);
+    const payload = serializeSave(runtime);
     localStorage.setItem(getSlotKey(slot), payload);
     setSaveSlotsVersion((prev) => prev + 1);
     pushToast(`Saved to slot ${slot}.`);
@@ -517,7 +561,7 @@ export const LocationApp = () => {
       pushToast("Save file is invalid.");
       return;
     }
-    applyLoadedState(loaded);
+    applyLoadedRuntime(loaded);
     setSaveMenuMode(null);
     pushToast(`Loaded slot ${slot}.`);
   };
@@ -526,13 +570,13 @@ export const LocationApp = () => {
     const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
     const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
     const refreshed = refreshMissionOffers(scenario);
-    applyLoadedState(refreshed);
+    setState(refreshed);
     setPendingAssignment(null);
     setSelectedPersonnelIds([]);
     pushToast("Game restarted from baseline.");
   };
   const handleOpenAdmin = () => {
-    localStorage.setItem("uprise-admin-draft", serializeSave(state));
+    localStorage.setItem("uprise-admin-current-draft", serializeSave(runtime));
     window.location.hash = "#/admin";
     setShowConsoleMenu(false);
   };
@@ -673,7 +717,7 @@ export const LocationApp = () => {
       return `(${Math.ceil(offerHours)}h)`;
     }
     if (plan.availability?.type === "time") {
-      const hoursLeft = Math.max(0, plan.availability.endHours - state.nowHours);
+      const hoursLeft = Math.max(0, plan.availability.endHours - runtime.nowHours);
       return `(${Math.ceil(hoursLeft)}h)`;
     }
     if (plan.availability?.type === "global") {
@@ -705,6 +749,16 @@ export const LocationApp = () => {
     } · ${location.name}`;
   };
 
+  const getPersonnelStatusMeta = (person: Personnel) => {
+    if (person.status === "wounded") {
+      return { label: "injured", className: "is-injured" };
+    }
+    if (person.status === "assigned" || person.status === "traveling") {
+      return { label: "on mission", className: "is-mission" };
+    }
+    return { label: "idle", className: "is-idle" };
+  };
+
   const getContextLabel = () => {
     if (mapLevel === "galaxy") {
       return "Galaxy";
@@ -725,12 +779,12 @@ export const LocationApp = () => {
   const focusSector = (sectorId: string) => {
     setSelectedSectorId(sectorId);
     setMapLevel("sector");
-    const planet = state.planets.find((item) => item.sectorId === sectorId);
+    const planet = data.planets.find((item) => item.sectorId === sectorId);
     if (!planet) {
       return;
     }
     setSelectedPlanetId(planet.id);
-    const location = state.locations.find((item) => item.planetId === planet.id);
+    const location = data.locations.find((item) => item.planetId === planet.id);
     if (location) {
       setSelectedLocationId(location.id);
     }
@@ -739,7 +793,7 @@ export const LocationApp = () => {
   useEffect(() => {
     const speed = SPEEDS[speedIndex] ?? SPEEDS[2];
     setState((prev) => {
-      timeAccumulatorRef.current.setSpeed(speed, prev.nowHours);
+      timeAccumulatorRef.current.setSpeed(speed, prev.runtime.nowHours);
       return prev;
     });
     const interval = setInterval(() => {
@@ -747,7 +801,7 @@ export const LocationApp = () => {
         if (isPaused) {
           return prev;
         }
-        const hoursToAdvance = timeAccumulatorRef.current.tick(prev.nowHours);
+        const hoursToAdvance = timeAccumulatorRef.current.tick(prev.runtime.nowHours);
         return hoursToAdvance > 0 ? advanceTime(prev, hoursToAdvance) : prev;
       });
     }, 1000);
@@ -755,7 +809,7 @@ export const LocationApp = () => {
   }, [speedIndex, isPaused]);
 
   useEffect(() => {
-    const latest = state.eventLog[state.eventLog.length - 1];
+    const latest = runtime.eventLog[runtime.eventLog.length - 1];
     if (!latest || latest.id === lastEventIdRef.current) {
       return;
     }
@@ -811,7 +865,7 @@ export const LocationApp = () => {
             ] as const);
     const toast = { id: latest.id, parts: [...parts] };
     setToasts((prev) => [...prev, toast]);
-  }, [state.eventLog, personnelById, locationById, planetById, sectorById]);
+  }, [runtime.eventLog, personnelById, locationById, planetById, sectorById]);
 
   useEffect(() => {
     if (toasts.length === 0) {
@@ -878,8 +932,8 @@ export const LocationApp = () => {
     if (locationById.has(selectedLocationId)) {
       return;
     }
-    setSelectedLocationId(state.locations[0]?.id ?? "");
-  }, [locationById, selectedLocationId, state.locations]);
+    setSelectedLocationId(data.locations[0]?.id ?? "");
+  }, [locationById, selectedLocationId, data.locations]);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -1054,7 +1108,8 @@ export const LocationApp = () => {
                     {getLocationLabel(offer.locationId)}
                   </button>{" "}
                   ·{" "}
-                  {Math.max(0, Math.ceil(offer.expiresAtHours - state.nowHours))}h left
+                  {Math.max(0, Math.ceil(offer.expiresAtHours - runtime.nowHours))}h
+                  {" "}left
                 </li>
               ))}
             </ul>
@@ -1063,10 +1118,12 @@ export const LocationApp = () => {
         <div className="card header-resources">
           <div className="header-resources-header">
             <h2 className="header-resources-title">Resources</h2>
-            <div className="meta header-resources-meta">{formatResources(state)}</div>
+            <div className="meta header-resources-meta">
+              {formatResources(runtime)}
+            </div>
           </div>
           <ul className="header-resources-list">
-            {state.materials.map((item) => (
+            {runtime.materials.map((item) => (
               <li key={item.id}>
                 <strong>{item.name}</strong> · qty {item.quantity}
               </li>
@@ -1180,6 +1237,22 @@ export const LocationApp = () => {
       <section className="card map-panel">
         <div className="map-header">
           <h2>Galaxy Map</h2>
+          <div className="map-mode-toggle">
+            <button
+              type="button"
+              className={mapMode === "map" ? "is-active" : ""}
+              onClick={() => setMapMode("map")}
+            >
+              Map
+            </button>
+            <button
+              type="button"
+              className={mapMode === "locations" ? "is-active" : ""}
+              onClick={() => setMapMode("locations")}
+            >
+              Locations
+            </button>
+          </div>
           <div className="map-breadcrumbs">
             <button type="button" onClick={() => setMapLevel("galaxy")}>
               Galaxy
@@ -1200,159 +1273,177 @@ export const LocationApp = () => {
             </button>
           </div>
         </div>
-        {mapLevel === "galaxy" ? (
-          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
-            {[
-              { x: 5, y: 5 },
-              { x: 61, y: 5 },
-              { x: 5, y: 61 },
-              { x: 61, y: 61 },
-            ].map((position, index) => {
-              const sector = state.sectors[index];
-              const count = sector
-                ? personnelCountBySectorId.get(sector.id) ?? 0
-                : 0;
-              if (!sector) {
+        <div className="map-panel-body">
+          {mapMode === "map" ? (
+            mapLevel === "galaxy" ? (
+              <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+              {[
+                { x: 5, y: 5 },
+                { x: 61, y: 5 },
+                { x: 5, y: 61 },
+                { x: 61, y: 61 },
+              ].map((position, index) => {
+                const sector = data.sectors[index];
+                const count = sector
+                  ? personnelCountBySectorId.get(sector.id) ?? 0
+                  : 0;
+                if (!sector) {
+                  return (
+                    <g key={`sector-slot-${index}`}>
+                      <rect
+                        x={position.x}
+                        y={position.y}
+                        width={54}
+                        height={54}
+                        rx={6}
+                        className="map-sector-rect is-empty"
+                      />
+                      <text
+                        x={position.x + 27}
+                        y={position.y + 30}
+                        className="map-label"
+                        textAnchor="middle"
+                      >
+                        Uncharted
+                      </text>
+                    </g>
+                  );
+                }
+                const isSelected = sector.id === selectedSectorId;
                 return (
-                  <g key={`sector-slot-${index}`}>
-                    <rect
-                      x={position.x}
-                      y={position.y}
-                      width={54}
-                      height={54}
-                      rx={6}
-                      className="map-sector-rect is-empty"
-                    />
+                  <g
+                    key={sector.id}
+                    className={`map-sector-rect${isSelected ? " selected" : ""}`}
+                    onClick={() => focusSector(sector.id)}
+                  >
+                    <rect x={position.x} y={position.y} width={54} height={54} rx={6} />
                     <text
                       x={position.x + 27}
-                      y={position.y + 30}
+                      y={position.y + 26}
                       className="map-label"
                       textAnchor="middle"
                     >
-                      Uncharted
+                      {sector.name}
+                    </text>
+                    <text
+                      x={position.x + 27}
+                      y={position.y + 40}
+                      className="map-label"
+                      textAnchor="middle"
+                    >
+                      {count} agents
                     </text>
                   </g>
                 );
-              }
-              const isSelected = sector.id === selectedSectorId;
-              return (
-                <g
-                  key={sector.id}
-                  className={`map-sector-rect${isSelected ? " selected" : ""}`}
-                  onClick={() => focusSector(sector.id)}
-                >
-                  <rect x={position.x} y={position.y} width={54} height={54} rx={6} />
+              })}
+            </svg>
+            ) : mapLevel === "sector" ? (
+            <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+              {sectorPlanets.map((planet) => (
+                <g key={planet.id}>
+                  <circle
+                    cx={planet.position.x}
+                    cy={planet.position.y}
+                    r={6}
+                    className="map-node"
+                    onClick={() => {
+                      setSelectedPlanetId(planet.id);
+                      setMapLevel("planet");
+                      const firstLocation = data.locations.find(
+                        (location) => location.planetId === planet.id,
+                      );
+                      if (firstLocation) {
+                        setSelectedLocationId(firstLocation.id);
+                      }
+                    }}
+                  />
                   <text
-                    x={position.x + 27}
-                    y={position.y + 26}
+                    x={planet.position.x + 8}
+                    y={planet.position.y + 4}
                     className="map-label"
-                    textAnchor="middle"
                   >
-                    {sector.name}
+                    {planet.name}
                   </text>
                   <text
-                    x={position.x + 27}
-                    y={position.y + 40}
+                    x={planet.position.x + 8}
+                    y={planet.position.y + 12}
                     className="map-label"
-                    textAnchor="middle"
                   >
-                    {count} agents
+                    {personnelCountByPlanetId.get(planet.id) ?? 0} agents
                   </text>
                 </g>
-              );
-            })}
-          </svg>
-        ) : mapLevel === "sector" ? (
-          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
-            {sectorPlanets.map((planet) => (
-              <g key={planet.id}>
-                <circle
-                  cx={planet.position.x}
-                  cy={planet.position.y}
-                  r={6}
-                  className="map-node"
-                  onClick={() => {
-                    setSelectedPlanetId(planet.id);
-                    setMapLevel("planet");
-                    const firstLocation = state.locations.find(
-                      (location) => location.planetId === planet.id,
-                    );
-                    if (firstLocation) {
-                      setSelectedLocationId(firstLocation.id);
-                    }
+              ))}
+            </svg>
+            ) : (
+            <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
+              {planetLocations.map((location) => {
+                const dragPerson = dragPersonnelId
+                  ? personnelById.get(dragPersonnelId) ?? null
+                  : null;
+                const canDrop = canTravelTo(dragPerson, location.id);
+                const isOver = mapDropLocationId === location.id;
+                return (
+                <g
+                  key={location.id}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setMapDropLocationId(location.id);
                   }}
-                />
-                <text
-                  x={planet.position.x + 8}
-                  y={planet.position.y + 4}
-                  className="map-label"
+                  onDragLeave={() => setMapDropLocationId(null)}
+                  onDrop={handleDropOnLocation(location.id)}
                 >
-                  {planet.name}
-                </text>
-                <text
-                  x={planet.position.x + 8}
-                  y={planet.position.y + 12}
-                  className="map-label"
-                >
-                  {personnelCountByPlanetId.get(planet.id) ?? 0} agents
-                </text>
-              </g>
-            ))}
-          </svg>
-        ) : (
-          <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
-            {planetLocations.map((location) => {
-              const dragPerson = dragPersonnelId
-                ? personnelById.get(dragPersonnelId) ?? null
-                : null;
-              const canDrop = canTravelTo(dragPerson, location.id);
-              const isOver = mapDropLocationId === location.id;
-              return (
-              <g
-                key={location.id}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setMapDropLocationId(location.id);
-                }}
-                onDragLeave={() => setMapDropLocationId(null)}
-                onDrop={handleDropOnLocation(location.id)}
-              >
-                <circle
-                  cx={location.position.x}
-                  cy={location.position.y}
-                  r={4}
-                  className={`map-node map-drop-target${
-                    isOver
-                      ? canDrop
-                        ? " is-drop-over"
-                        : " is-drop-invalid"
-                      : ""
-                  }`}
-                  onClick={() => setSelectedLocationId(location.id)}
-                />
-                <text
-                  x={location.position.x + 6}
-                  y={location.position.y + 4}
-                  className="map-label"
-                >
-                  {location.name}
-                </text>
-                <text
-                  x={location.position.x + 6}
-                  y={location.position.y + 12}
-                  className="map-label"
-                >
-                  {missionCountByLocationId.get(location.id) ?? 0} missions
-                </text>
-              </g>
-            )})}
-          </svg>
-        )}
-        <div className="meta">
-          Selected: {getLocationLabel(selectedLocationId)}
+                  <circle
+                    cx={location.position.x}
+                    cy={location.position.y}
+                    r={4}
+                    className={`map-node map-drop-target${
+                      isOver
+                        ? canDrop
+                          ? " is-drop-over"
+                          : " is-drop-invalid"
+                        : ""
+                    }`}
+                    onClick={() => setSelectedLocationId(location.id)}
+                  />
+                  <text
+                    x={location.position.x + 6}
+                    y={location.position.y + 4}
+                    className="map-label"
+                  >
+                    {location.name}
+                  </text>
+                  <text
+                    x={location.position.x + 6}
+                    y={location.position.y + 12}
+                    className="map-label"
+                  >
+                    {missionCountByLocationId.get(location.id) ?? 0} missions
+                  </text>
+                </g>
+              )})}
+            </svg>
+            )
+          ) : (
+            <div className="location-list">
+              {[...data.locations]
+                .sort((a, b) =>
+                  (a.name ?? a.id).localeCompare(b.name ?? b.id),
+                )
+                .map((location) => (
+                  <button
+                    key={location.id}
+                    type="button"
+                    className={location.id === selectedLocationId ? "is-active" : ""}
+                    onClick={() => selectLocationForDetails(location.id)}
+                  >
+                    {getLocationLabel(location.id)}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
         <div className="meta">
-          Drag personnel onto a location (planet view) to travel.
+          Selected: {getLocationLabel(selectedLocationId)}
         </div>
       </section>
 
@@ -1417,11 +1508,8 @@ export const LocationApp = () => {
                     selectedPersonnelIds.includes(person.id) ? " is-selected" : ""
                   }`}
                   style={getPersonnelOptionStyle(person)}
-                  draggable
+                  draggable={person.status === "idle"}
                   onClick={(event) => {
-                    if (person.status !== "idle") {
-                      return;
-                    }
                     if (event.ctrlKey || event.metaKey) {
                       setSelectedPersonnelIds((prev) =>
                         prev.includes(person.id)
@@ -1432,7 +1520,13 @@ export const LocationApp = () => {
                     }
                     setSelectedPersonnelIds([person.id]);
                   }}
-                  onDragStart={handleDragStart(person.id)}
+                  onDragStart={(event) => {
+                    if (person.status !== "idle") {
+                      event.preventDefault();
+                      return;
+                    }
+                    handleDragStart(person.id)(event);
+                  }}
                   onDragEnd={() => {
                     setDragPlanId(null);
                     setHoverPlanId(null);
@@ -1440,9 +1534,19 @@ export const LocationApp = () => {
                     setMapDropLocationId(null);
                   }}
                 >
-                  <strong>{person.name}</strong>
+                  <div className="personnel-header">
+                    <strong>{person.name}</strong>
+                    <span
+                      className={`personnel-status ${getPersonnelStatusMeta(person).className}`}
+                    >
+                      {getPersonnelStatusMeta(person).label}
+                    </span>
+                  </div>
                   <div className="meta">
-                    {person.skills.join(", ")} · {person.status}
+                    {person.skills.join(", ")}
+                  </div>
+                  <div className="meta">
+                    Traits: {person.traits?.join(", ") ?? "none"}
                   </div>
                   <div className="meta">
                     <button
@@ -1464,6 +1568,52 @@ export const LocationApp = () => {
                 </div>
               ))}
             </div>
+          )}
+          <div className="assignment-details-title">Agent Details</div>
+          {selectedPersonnelIds.length > 0 ? (
+            (() => {
+              const person = personnelById.get(selectedPersonnelIds[0]);
+              if (!person) {
+                return <div className="meta">Select an agent to see details.</div>;
+              }
+              const statusMeta = getPersonnelStatusMeta(person);
+              const mission = missionByPersonnelId.get(person.id);
+              return (
+                <div className="meta">
+                  <div>
+                    {person.name} ·{" "}
+                    <span className={`personnel-status ${statusMeta.className}`}>
+                      {statusMeta.label}
+                    </span>
+                  </div>
+                  <div className="meta">Skills: {person.skills.join(", ")}</div>
+                  <div className="meta">
+                    Traits: {person.traits?.join(", ") ?? "none"}
+                  </div>
+                  <div className="meta">
+                    Location:{" "}
+                    <button
+                      type="button"
+                      className="inline-link"
+                      onClick={() => jumpToLocation(person.locationId)}
+                    >
+                      {getLocationLabel(person.locationId)}
+                    </button>
+                  </div>
+                  {mission ? (
+                    <div className="meta">
+                      Mission:{" "}
+                      {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
+                      {mission.remainingHours}h left
+                    </div>
+                  ) : (
+                    <div className="meta">Mission: none</div>
+                  )}
+                </div>
+              );
+            })()
+          ) : (
+            <div className="meta">Select an agent to see details.</div>
           )}
         </div>
 
@@ -1723,7 +1873,7 @@ export const LocationApp = () => {
               value={travelPersonnelId}
               onChange={(event) => setTravelPersonnelId(event.target.value)}
             >
-              {state.personnel.map((person) => (
+              {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
                   {person.name} · {person.skills.join(", ")} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
@@ -1738,7 +1888,7 @@ export const LocationApp = () => {
               value={travelDestinationId}
               onChange={(event) => setTravelDestinationId(event.target.value)}
             >
-              {state.locations.map((location) => (
+              {data.locations.map((location) => (
                 <option key={location.id} value={location.id}>
                   {getLocationLabel(location.id)}
                 </option>
@@ -1759,9 +1909,9 @@ export const LocationApp = () => {
               Assign travel
             </button>
           </div>
-          {state.travel.length > 0 ? (
+          {runtime.travel.length > 0 ? (
             <ul>
-              {state.travel.map((assignment) => (
+              {runtime.travel.map((assignment) => (
                 <li key={assignment.id}>
                   {personnelById.get(assignment.personnelId)?.name ??
                     assignment.personnelId}{" "}
@@ -1779,11 +1929,11 @@ export const LocationApp = () => {
 
       <section className="card">
         <h2>Event Log</h2>
-        {state.eventLog.length === 0 ? (
+        {runtime.eventLog.length === 0 ? (
           <p>No events yet.</p>
         ) : (
           <ul>
-            {state.eventLog
+            {runtime.eventLog
               .slice()
               .reverse()
               .map((event) => (

@@ -176,23 +176,31 @@ export interface ResourceBundle {
   intel: number;
 }
 
-export interface GameState {
-  faction: Faction;
-  nowHours: number;
-  headquartersId: string;
-  resources: ResourceBundle;
+export interface GameData {
   materialCatalog: MaterialCatalogItem[];
-  personnel: Personnel[];
-  materials: MaterialItem[];
   materialRewardTables: MaterialRewardTable[];
   missionTypeConfigs: MissionTypeConfig[];
   sectors: Sector[];
   planets: Planet[];
   locations: Location[];
   missionPlans: MissionPlan[];
-  missions: MissionInstance[];
   locationAssignments: LocationAssignment[];
+}
+
+export interface GameRuntime {
+  faction: Faction;
+  nowHours: number;
+  headquartersId: string;
+  resources: ResourceBundle;
+  personnel: Personnel[];
+  materials: MaterialItem[];
+  missions: MissionInstance[];
   missionOffers: MissionOffer[];
   travel: TravelAssignment[];
   eventLog: EventLogEntry[];
+}
+
+export interface GameState {
+  data: GameData;
+  runtime: GameRuntime;
 }

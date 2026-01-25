@@ -1,5 +1,11 @@
-import { useMemo, useState } from "react";
-import type { GameState, MissionPlan, Personnel, Location } from "../models.js";
+import { useEffect, useMemo, useState } from "react";
+import type {
+  GameState,
+  MissionPlan,
+  Personnel,
+  Location,
+  LocationAssignment,
+} from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
 import { buildScenario } from "../scenarios.js";
@@ -7,76 +13,258 @@ import type { ScenarioOverrides } from "../scenarios.js";
 import { refreshMissionOffers } from "../engine.js";
 import { parseSave, serializeSave } from "../persistence.js";
 
-const ADMIN_DRAFT_KEY = "uprise-admin-draft";
+const ADMIN_CURRENT_DRAFT_KEY = "uprise-admin-current-draft";
+const ADMIN_BASELINE_DRAFT_KEY = "uprise-admin-baseline-draft";
+const ADMIN_CURRENT_APPLY_KEY = "uprise-admin-current-apply";
 
-const loadInitialState = (): GameState => {
-  const raw = localStorage.getItem(ADMIN_DRAFT_KEY);
-  if (raw) {
-    const parsed = parseSave(raw);
-    if (parsed) {
-      return parsed;
-    }
-  }
+const loadInitialState = (mode: "current" | "baseline"): GameState => {
+  const draftKey =
+    mode === "baseline" ? ADMIN_BASELINE_DRAFT_KEY : ADMIN_CURRENT_DRAFT_KEY;
   const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
+  if (mode === "baseline") {
+    const raw = localStorage.getItem(draftKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as GameState;
+        if (parsed?.data && parsed?.runtime) {
+          return parsed;
+        }
+      } catch {
+        // ignore invalid baseline drafts
+      }
+    }
+    return baseline;
+  }
+  const raw = localStorage.getItem(draftKey);
+  const runtimeDraft = raw ? parseSave(raw) : null;
   const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+  if (runtimeDraft) {
+    return refreshMissionOffers({ ...scenario, runtime: runtimeDraft });
+  }
   return refreshMissionOffers(scenario);
 };
 
 export const AdminApp = () => {
-  const [state, setState] = useState<GameState>(() => loadInitialState());
+  const [mode, setMode] = useState<"current" | "baseline">("current");
+  const [state, setState] = useState<GameState>(() => loadInitialState("current"));
   const [selectedMissionId, setSelectedMissionId] = useState<string>(
-    state.missionPlans[0]?.id ?? "",
+    state.data.missionPlans[0]?.id ?? "",
   );
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    state.locations[0]?.id ?? "",
+    state.data.locations[0]?.id ?? "",
   );
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>(
-    state.personnel[0]?.id ?? "",
+    state.runtime.personnel[0]?.id ?? "",
   );
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const isBaseline = mode === "baseline";
+
+  useEffect(() => {
+    const nextState = loadInitialState(mode);
+    setState(nextState);
+    setSelectedMissionId(nextState.data.missionPlans[0]?.id ?? "");
+    setSelectedLocationId(nextState.data.locations[0]?.id ?? "");
+    setSelectedPersonnelId(nextState.runtime.personnel[0]?.id ?? "");
+    setSaveMessage("");
+  }, [mode]);
 
   const selectedMission = useMemo(
-    () => state.missionPlans.find((plan) => plan.id === selectedMissionId) ?? null,
-    [state.missionPlans, selectedMissionId],
+    () => state.data.missionPlans.find((plan) => plan.id === selectedMissionId) ?? null,
+    [state.data.missionPlans, selectedMissionId],
   );
   const selectedLocation = useMemo(
-    () => state.locations.find((item) => item.id === selectedLocationId) ?? null,
-    [state.locations, selectedLocationId],
+    () => state.data.locations.find((item) => item.id === selectedLocationId) ?? null,
+    [state.data.locations, selectedLocationId],
   );
   const selectedPersonnel = useMemo(
-    () => state.personnel.find((item) => item.id === selectedPersonnelId) ?? null,
-    [state.personnel, selectedPersonnelId],
+    () =>
+      state.runtime.personnel.find((item) => item.id === selectedPersonnelId) ??
+      null,
+    [state.runtime.personnel, selectedPersonnelId],
   );
 
   const updateMission = (planId: string, patch: Partial<MissionPlan>) => {
     setState((prev) => ({
       ...prev,
-      missionPlans: prev.missionPlans.map((plan) =>
-        plan.id === planId ? { ...plan, ...patch } : plan,
-      ),
+      data: {
+        ...prev.data,
+        missionPlans: prev.data.missionPlans.map((plan) =>
+          plan.id === planId ? { ...plan, ...patch } : plan,
+        ),
+      },
     }));
   };
   const updateLocation = (locationId: string, patch: Partial<Location>) => {
     setState((prev) => ({
       ...prev,
-      locations: prev.locations.map((location) =>
-        location.id === locationId ? { ...location, ...patch } : location,
-      ),
+      data: {
+        ...prev.data,
+        locations: prev.data.locations.map((location) =>
+          location.id === locationId ? { ...location, ...patch } : location,
+        ),
+      },
     }));
   };
   const updatePersonnel = (personnelId: string, patch: Partial<Personnel>) => {
     setState((prev) => ({
       ...prev,
-      personnel: prev.personnel.map((person) =>
-        person.id === personnelId ? { ...person, ...patch } : person,
-      ),
+      runtime: {
+        ...prev.runtime,
+        personnel: prev.runtime.personnel.map((person) =>
+          person.id === personnelId ? { ...person, ...patch } : person,
+        ),
+      },
     }));
   };
 
+  const upsertMissionLocationAssignment = (planId: string, locationId: string) => {
+    setState((prev) => {
+      if (locationId === "none") {
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            locationAssignments: prev.data.locationAssignments.filter(
+              (assignment) => assignment.planId !== planId,
+            ),
+          },
+        };
+      }
+      const existing = prev.data.locationAssignments.find(
+        (assignment) => assignment.planId === planId,
+      );
+      if (existing) {
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            locationAssignments: prev.data.locationAssignments.map((assignment) =>
+              assignment.id === existing.id
+                ? { ...assignment, locationId }
+                : assignment,
+            ),
+          },
+        };
+      }
+      const newAssignment: LocationAssignment = {
+        id: `assign-${planId}-${Date.now()}`,
+        planId,
+        locationId,
+        appearanceChance: 0.05,
+        windowHours: 24,
+      };
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          locationAssignments: [...prev.data.locationAssignments, newAssignment],
+        },
+      };
+    });
+  };
+
   const saveDraft = () => {
-    localStorage.setItem(ADMIN_DRAFT_KEY, serializeSave(state));
-    setSaveMessage("Draft saved.");
+    if (mode === "baseline") {
+      localStorage.setItem(ADMIN_BASELINE_DRAFT_KEY, JSON.stringify(state, null, 2));
+      setSaveMessage("Baseline draft saved.");
+    } else {
+      const payload = serializeSave(state.runtime);
+      localStorage.setItem(ADMIN_CURRENT_DRAFT_KEY, payload);
+      localStorage.setItem(ADMIN_CURRENT_APPLY_KEY, payload);
+      setSaveMessage("Applied to running game.");
+    }
     window.setTimeout(() => setSaveMessage(""), 1500);
+  };
+
+  const exportBaseline = async () => {
+    const json = JSON.stringify(state, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      setSaveMessage("Baseline JSON copied to clipboard.");
+    } catch {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "baselineState.json";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setSaveMessage("Baseline JSON downloaded.");
+    }
+    window.setTimeout(() => setSaveMessage(""), 1500);
+  };
+
+  const addMission = () => {
+    const id = `custom-mission-${Date.now()}`;
+    const mission: MissionPlan = {
+      id,
+      name: "New Mission",
+      summary: "Describe the mission.",
+      type: "logistics",
+      requiredSkills: [],
+      durationHours: 12,
+      baseSuccessChance: 0.5,
+      rewards: {},
+      penalties: {},
+    };
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        missionPlans: [...prev.data.missionPlans, mission],
+      },
+    }));
+    setSelectedMissionId(id);
+  };
+
+  const addLocation = () => {
+    const id = `custom-location-${Date.now()}`;
+    const planetId = state.data.planets[0]?.id ?? "";
+    const location: Location = {
+      id,
+      name: "New Location",
+      tags: [],
+      planetId,
+      position: { x: 50, y: 50 },
+      attributes: {
+        resistance: 40,
+        healthcareFacilities: 50,
+        techLevel: 50,
+        populationDensity: 50,
+        customsScrutiny: 50,
+        patrolFrequency: 50,
+        garrisonStrength: 50,
+      },
+    };
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        locations: [...prev.data.locations, location],
+      },
+    }));
+    setSelectedLocationId(id);
+  };
+
+  const addPersonnel = () => {
+    const id = `custom-personnel-${Date.now()}`;
+    const locationId = state.data.locations[0]?.id ?? "";
+    const person: Personnel = {
+      id,
+      name: "New Agent",
+      skills: [],
+      traits: [],
+      status: "idle",
+      locationId,
+    };
+    setState((prev) => ({
+      ...prev,
+      runtime: {
+        ...prev.runtime,
+        personnel: [...prev.runtime.personnel, person],
+      },
+    }));
+    setSelectedPersonnelId(id);
   };
 
   return (
@@ -85,11 +273,32 @@ export const AdminApp = () => {
         <div>
           <h1>Admin Editor</h1>
           <div className="meta">Edit missions, locations, and agents.</div>
+          <div className="admin-mode-toggle">
+            <button
+              type="button"
+              className={`admin-toggle${mode === "current" ? " is-active" : ""}`}
+              onClick={() => setMode("current")}
+            >
+              Current State
+            </button>
+            <button
+              type="button"
+              className={`admin-toggle${mode === "baseline" ? " is-active" : ""}`}
+              onClick={() => setMode("baseline")}
+            >
+              Baseline
+            </button>
+          </div>
         </div>
         <div className="admin-toolbar-actions">
           <button type="button" onClick={saveDraft}>
-            Save Draft
+            {mode === "baseline" ? "Save Baseline Draft" : "Apply to Game"}
           </button>
+          {mode === "baseline" ? (
+            <button type="button" onClick={exportBaseline}>
+              Export Baseline JSON
+            </button>
+          ) : null}
           <button type="button" onClick={() => (window.location.hash = "#/game")}>
             Back to Game
           </button>
@@ -99,10 +308,15 @@ export const AdminApp = () => {
 
       <section className="admin-grid">
         <div className="card admin-panel">
-          <h2>Missions</h2>
+          <div className="admin-section-header">
+            <h2>Missions</h2>
+            <button type="button" onClick={addMission} disabled={!isBaseline}>
+              Add
+            </button>
+          </div>
           <div className="admin-layout">
             <div className="admin-list">
-              {state.missionPlans.map((plan) => (
+              {state.data.missionPlans.map((plan) => (
                 <button
                   key={plan.id}
                   type="button"
@@ -118,11 +332,53 @@ export const AdminApp = () => {
             <div className="admin-form">
               {selectedMission ? (
                 <>
+                  {!isBaseline ? (
+                    <div className="meta">
+                      Mission data edits are available in baseline mode.
+                    </div>
+                  ) : null}
+                  {(() => {
+                    const assignments = state.data.locationAssignments.filter(
+                      (assignment) => assignment.planId === selectedMission.id,
+                    );
+                    const locationValue =
+                      assignments[0]?.locationId ?? "none";
+                    return (
+                      <>
+                        <label className="field">
+                          Location assignment
+                          <select
+                            value={locationValue}
+                            disabled={!isBaseline}
+                            onChange={(event) =>
+                              upsertMissionLocationAssignment(
+                                selectedMission.id,
+                                event.target.value,
+                              )
+                            }
+                          >
+                            <option value="none">None (global)</option>
+                            {state.data.locations.map((location) => (
+                              <option key={location.id} value={location.id}>
+                                {location.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {assignments.length > 1 ? (
+                          <div className="meta">
+                            Multiple assignments exist; this edits the first.
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <label className="field">
                     Name
                     <input
                       type="text"
                       value={selectedMission.name}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateMission(selectedMission.id, { name: event.target.value })
                       }
@@ -132,6 +388,7 @@ export const AdminApp = () => {
                     Summary
                     <textarea
                       value={selectedMission.summary}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateMission(selectedMission.id, { summary: event.target.value })
                       }
@@ -142,6 +399,7 @@ export const AdminApp = () => {
                     <input
                       type="text"
                       value={selectedMission.type}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateMission(selectedMission.id, { type: event.target.value })
                       }
@@ -154,6 +412,7 @@ export const AdminApp = () => {
                         type="number"
                         min={1}
                         value={selectedMission.durationHours}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateMission(selectedMission.id, {
                             durationHours: Number(event.target.value),
@@ -169,6 +428,7 @@ export const AdminApp = () => {
                         max={1}
                         step={0.05}
                         value={selectedMission.baseSuccessChance}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateMission(selectedMission.id, {
                             baseSuccessChance: Number(event.target.value),
@@ -182,6 +442,7 @@ export const AdminApp = () => {
                     <input
                       type="text"
                       value={selectedMission.requiredSkills.join(", ")}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateMission(selectedMission.id, {
                           requiredSkills: event.target.value
@@ -196,6 +457,7 @@ export const AdminApp = () => {
                     Availability
                     <select
                       value={selectedMission.availability?.type ?? "none"}
+                      disabled={!isBaseline}
                       onChange={(event) => {
                         const value = event.target.value;
                         if (value === "none") {
@@ -235,6 +497,7 @@ export const AdminApp = () => {
                         <input
                           type="number"
                           value={selectedMission.availability.startHours}
+                          disabled={!isBaseline}
                           onChange={(event) =>
                             updateMission(selectedMission.id, {
                               availability: {
@@ -251,6 +514,7 @@ export const AdminApp = () => {
                         <input
                           type="number"
                           value={selectedMission.availability.endHours}
+                          disabled={!isBaseline}
                           onChange={(event) =>
                             updateMission(selectedMission.id, {
                               availability: {
@@ -268,6 +532,7 @@ export const AdminApp = () => {
                     Required materials (JSON)
                     <textarea
                       value={JSON.stringify(selectedMission.requiredMaterials ?? [], null, 2)}
+                      disabled={!isBaseline}
                       onChange={(event) => {
                         try {
                           const parsed = JSON.parse(event.target.value);
@@ -282,6 +547,7 @@ export const AdminApp = () => {
                     Rewards (JSON)
                     <textarea
                       value={JSON.stringify(selectedMission.rewards ?? {}, null, 2)}
+                      disabled={!isBaseline}
                       onChange={(event) => {
                         try {
                           const parsed = JSON.parse(event.target.value);
@@ -296,6 +562,7 @@ export const AdminApp = () => {
                     Penalties (JSON)
                     <textarea
                       value={JSON.stringify(selectedMission.penalties ?? {}, null, 2)}
+                      disabled={!isBaseline}
                       onChange={(event) => {
                         try {
                           const parsed = JSON.parse(event.target.value);
@@ -315,10 +582,15 @@ export const AdminApp = () => {
         </div>
 
         <div className="card admin-panel">
-          <h2>Locations</h2>
+          <div className="admin-section-header">
+            <h2>Locations</h2>
+            <button type="button" onClick={addLocation} disabled={!isBaseline}>
+              Add
+            </button>
+          </div>
           <div className="admin-layout">
             <div className="admin-list">
-              {state.locations.map((location) => (
+              {state.data.locations.map((location) => (
                 <button
                   key={location.id}
                   type="button"
@@ -334,11 +606,17 @@ export const AdminApp = () => {
             <div className="admin-form">
               {selectedLocation ? (
                 <>
+                  {!isBaseline ? (
+                    <div className="meta">
+                      Location data edits are available in baseline mode.
+                    </div>
+                  ) : null}
                   <label className="field">
                     Name
                     <input
                       type="text"
                       value={selectedLocation.name}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateLocation(selectedLocation.id, { name: event.target.value })
                       }
@@ -348,13 +626,14 @@ export const AdminApp = () => {
                     Planet
                     <select
                       value={selectedLocation.planetId}
+                      disabled={!isBaseline}
                       onChange={(event) =>
                         updateLocation(selectedLocation.id, {
                           planetId: event.target.value,
                         })
                       }
                     >
-                      {state.planets.map((planet) => (
+                      {state.data.planets.map((planet) => (
                         <option key={planet.id} value={planet.id}>
                           {planet.name}
                         </option>
@@ -367,6 +646,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.resistance}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -382,6 +662,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.techLevel}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -397,6 +678,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.populationDensity}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -414,6 +696,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.customsScrutiny}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -429,6 +712,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.patrolFrequency}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -444,6 +728,7 @@ export const AdminApp = () => {
                       <input
                         type="number"
                         value={selectedLocation.attributes.garrisonStrength}
+                        disabled={!isBaseline}
                         onChange={(event) =>
                           updateLocation(selectedLocation.id, {
                             attributes: {
@@ -464,10 +749,15 @@ export const AdminApp = () => {
         </div>
 
         <div className="card admin-panel">
-          <h2>Agents</h2>
+          <div className="admin-section-header">
+            <h2>Agents</h2>
+            <button type="button" onClick={addPersonnel}>
+              Add
+            </button>
+          </div>
           <div className="admin-layout">
             <div className="admin-list">
-              {state.personnel.map((person) => (
+              {state.runtime.personnel.map((person) => (
                 <button
                   key={person.id}
                   type="button"
@@ -549,7 +839,7 @@ export const AdminApp = () => {
                         })
                       }
                     >
-                      {state.locations.map((location) => (
+                      {state.data.locations.map((location) => (
                         <option key={location.id} value={location.id}>
                           {location.name}
                         </option>

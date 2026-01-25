@@ -86,12 +86,19 @@ export const generatePersonnel = (
   state: GameState,
   options?: { locationId?: string },
 ): Personnel => {
-  const existingIds = new Set(state.personnel.map((person) => person.id));
-  const existingNames = new Set(state.personnel.map((person) => person.name));
+  const existingIds = new Set(
+    state.runtime.personnel.map((person) => person.id),
+  );
+  const existingNames = new Set(
+    state.runtime.personnel.map((person) => person.name),
+  );
   const skillCount = Math.random() < 0.6 ? 1 : 2;
   const traitCount = Math.random() < 0.5 ? 1 : 2;
   const locationId =
-    options?.locationId ?? state.headquartersId ?? state.locations[0]?.id ?? "";
+    options?.locationId ??
+    state.runtime.headquartersId ??
+    state.data.locations[0]?.id ??
+    "";
 
   return {
     id: buildUniqueId("personnel", existingIds),

@@ -1,10 +1,13 @@
 import type {
   EventLogEntry,
+  GameData,
+  GameRuntime,
   GameState,
   Location,
   LocationAssignment,
   MaterialCatalogItem,
   MaterialItem,
+  MaterialRewardTable,
   MissionOffer,
   MissionInstance,
   MissionPlan,
@@ -23,23 +26,28 @@ type PartialWithId<T extends WithId> = Partial<T> & WithId;
 type PartialWithType<T extends WithType> = Partial<T> & WithType;
 
 export interface ScenarioOverrides {
-  faction?: GameState["faction"];
-  nowHours?: number;
-  headquartersId?: string;
-  resources?: Partial<ResourceBundle>;
-  materialCatalog?: Array<PartialWithId<MaterialCatalogItem>>;
-  personnel?: Array<PartialWithId<Personnel>>;
-  materials?: Array<PartialWithId<MaterialItem>>;
-  sectors?: Array<PartialWithId<Sector>>;
-  planets?: Array<PartialWithId<Planet>>;
-  locations?: Array<PartialWithId<Location>>;
-  missionPlans?: Array<PartialWithId<MissionPlan>>;
-  missions?: Array<PartialWithId<MissionInstance>>;
-  locationAssignments?: Array<PartialWithId<LocationAssignment>>;
-  missionOffers?: Array<PartialWithId<MissionOffer>>;
-  missionTypeConfigs?: Array<PartialWithType<MissionTypeConfig>>;
-  travel?: Array<PartialWithId<TravelAssignment>>;
-  eventLog?: Array<PartialWithId<EventLogEntry>>;
+  data?: {
+    materialCatalog?: Array<PartialWithId<MaterialCatalogItem>>;
+    materialRewardTables?: Array<PartialWithId<MaterialRewardTable>>;
+    missionTypeConfigs?: Array<PartialWithType<MissionTypeConfig>>;
+    sectors?: Array<PartialWithId<Sector>>;
+    planets?: Array<PartialWithId<Planet>>;
+    locations?: Array<PartialWithId<Location>>;
+    missionPlans?: Array<PartialWithId<MissionPlan>>;
+    locationAssignments?: Array<PartialWithId<LocationAssignment>>;
+  };
+  runtime?: {
+    faction?: GameState["runtime"]["faction"];
+    nowHours?: number;
+    headquartersId?: string;
+    resources?: Partial<ResourceBundle>;
+    personnel?: Array<PartialWithId<Personnel>>;
+    materials?: Array<PartialWithId<MaterialItem>>;
+    missions?: Array<PartialWithId<MissionInstance>>;
+    missionOffers?: Array<PartialWithId<MissionOffer>>;
+    travel?: Array<PartialWithId<TravelAssignment>>;
+    eventLog?: Array<PartialWithId<EventLogEntry>>;
+  };
 }
 
 const mergeById = <T extends WithId>(
@@ -108,76 +116,99 @@ export const buildScenario = (
   }
 
   return {
-    ...baseline,
-    faction: overrides.faction ?? baseline.faction,
-    nowHours: overrides.nowHours ?? baseline.nowHours,
-    headquartersId: overrides.headquartersId ?? baseline.headquartersId,
-    resources: {
-      ...baseline.resources,
-      ...overrides.resources,
+    data: {
+      ...baseline.data,
+      materialCatalog: mergeById(
+        baseline.data.materialCatalog,
+        overrides.data?.materialCatalog,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      materialRewardTables: mergeById(
+        baseline.data.materialRewardTables,
+        overrides.data?.materialRewardTables,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      missionTypeConfigs: mergeByType(
+        baseline.data.missionTypeConfigs,
+        overrides.data?.missionTypeConfigs,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      sectors: mergeById(
+        baseline.data.sectors,
+        overrides.data?.sectors,
+        (current, override) => ({
+          ...current,
+          ...override,
+          tags: override.tags ?? current.tags,
+          polygon: override.polygon ?? current.polygon,
+        }),
+      ),
+      planets: mergeById(
+        baseline.data.planets,
+        overrides.data?.planets,
+        (current, override) => ({
+          ...current,
+          ...override,
+          tags: override.tags ?? current.tags,
+          position: override.position ?? current.position,
+        }),
+      ),
+      locations: mergeById(
+        baseline.data.locations,
+        overrides.data?.locations,
+        mergeLocation,
+      ),
+      missionPlans: mergeById(
+        baseline.data.missionPlans,
+        overrides.data?.missionPlans,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      locationAssignments: mergeById(
+        baseline.data.locationAssignments,
+        overrides.data?.locationAssignments,
+        (current, override) => ({ ...current, ...override }),
+      ),
     },
-    materialCatalog: mergeById(
-      baseline.materialCatalog,
-      overrides.materialCatalog,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    personnel: mergeById(
-      baseline.personnel,
-      overrides.personnel,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    materials: mergeById(
-      baseline.materials,
-      overrides.materials,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    sectors: mergeById(baseline.sectors, overrides.sectors, (current, override) => ({
-      ...current,
-      ...override,
-      tags: override.tags ?? current.tags,
-      polygon: override.polygon ?? current.polygon,
-    })),
-    planets: mergeById(baseline.planets, overrides.planets, (current, override) => ({
-      ...current,
-      ...override,
-      tags: override.tags ?? current.tags,
-      position: override.position ?? current.position,
-    })),
-    locations: mergeById(baseline.locations, overrides.locations, mergeLocation),
-    missionPlans: mergeById(
-      baseline.missionPlans,
-      overrides.missionPlans,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    missions: mergeById(
-      baseline.missions,
-      overrides.missions,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    locationAssignments: mergeById(
-      baseline.locationAssignments,
-      overrides.locationAssignments,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    missionOffers: mergeById(
-      baseline.missionOffers,
-      overrides.missionOffers,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    missionTypeConfigs: mergeByType(
-      baseline.missionTypeConfigs,
-      overrides.missionTypeConfigs,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    travel: mergeById(
-      baseline.travel,
-      overrides.travel,
-      (current, override) => ({ ...current, ...override }),
-    ),
-    eventLog: mergeById(
-      baseline.eventLog,
-      overrides.eventLog,
-      (current, override) => ({ ...current, ...override }),
-    ),
+    runtime: {
+      ...baseline.runtime,
+      faction: overrides.runtime?.faction ?? baseline.runtime.faction,
+      nowHours: overrides.runtime?.nowHours ?? baseline.runtime.nowHours,
+      headquartersId:
+        overrides.runtime?.headquartersId ?? baseline.runtime.headquartersId,
+      resources: {
+        ...baseline.runtime.resources,
+        ...overrides.runtime?.resources,
+      },
+      personnel: mergeById(
+        baseline.runtime.personnel,
+        overrides.runtime?.personnel,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      materials: mergeById(
+        baseline.runtime.materials,
+        overrides.runtime?.materials,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      missions: mergeById(
+        baseline.runtime.missions,
+        overrides.runtime?.missions,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      missionOffers: mergeById(
+        baseline.runtime.missionOffers,
+        overrides.runtime?.missionOffers,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      travel: mergeById(
+        baseline.runtime.travel,
+        overrides.runtime?.travel,
+        (current, override) => ({ ...current, ...override }),
+      ),
+      eventLog: mergeById(
+        baseline.runtime.eventLog,
+        overrides.runtime?.eventLog,
+        (current, override) => ({ ...current, ...override }),
+      ),
+    },
   };
 };

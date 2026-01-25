@@ -42,33 +42,33 @@ const mergeResources = (
 };
 
 export const getLocation = (state: GameState, locationId: string) =>
-  state.locations.find((location) => location.id === locationId);
+  state.data.locations.find((location) => location.id === locationId);
 
 export const getMissionPlan = (state: GameState, planId: string) =>
-  state.missionPlans.find((plan) => plan.id === planId);
+  state.data.missionPlans.find((plan) => plan.id === planId);
 
 export const getPersonnel = (state: GameState, personnelId: string) =>
-  state.personnel.find((person) => person.id === personnelId);
+  state.runtime.personnel.find((person) => person.id === personnelId);
 
 export const getMaterialRewardTable = (
   state: GameState,
   tableId?: string,
 ): MaterialRewardTable | undefined =>
   tableId
-    ? state.materialRewardTables.find((table) => table.id === tableId)
+    ? state.data.materialRewardTables.find((table) => table.id === tableId)
     : undefined;
 
 export const getMissionTypeConfig = (
   state: GameState,
   missionType: MissionPlan["type"],
 ): MissionTypeConfig | undefined =>
-  state.missionTypeConfigs.find((config) => config.type === missionType);
+  state.data.missionTypeConfigs.find((config) => config.type === missionType);
 
 export const getMaterialCatalogItem = (
   state: GameState,
   materialId: string,
 ): MaterialCatalogItem | undefined =>
-  state.materialCatalog.find((item) => item.id === materialId);
+  state.data.materialCatalog.find((item) => item.id === materialId);
 
 const getMaterialRewardTableForPlan = (
   state: GameState,
@@ -90,7 +90,7 @@ const hasMaterials = (
     return errors;
   }
   for (const requirement of requirements) {
-    const material = state.materials.find(
+    const material = state.runtime.materials.find(
       (item) => item.id === requirement.materialId,
     );
     if (!material) {
@@ -157,7 +157,7 @@ const applyMaterialRewards = (
     return state;
   }
   const modifier = getMaterialRewardModifier(state, locationId);
-  let nextMaterials = [...state.materials];
+  let nextMaterials = [...state.runtime.materials];
   for (const entry of table.entries) {
     const chance = Math.max(0, Math.min(1, entry.baseChance * modifier));
     if (Math.random() > chance) {
@@ -178,9 +178,9 @@ const applyMaterialRewards = (
       ];
     }
   }
-  return nextMaterials === state.materials
+  return nextMaterials === state.runtime.materials
     ? state
-    : { ...state, materials: nextMaterials };
+    : { ...state, runtime: { ...state.runtime, materials: nextMaterials } };
 };
 
 const applyRecruitRewards = (
@@ -191,12 +191,18 @@ const applyRecruitRewards = (
   if (count <= 0) {
     return state;
   }
-  const nextPersonnel = [...state.personnel];
-  let workingState: GameState = { ...state, personnel: nextPersonnel };
+  const nextPersonnel = [...state.runtime.personnel];
+  let workingState: GameState = {
+    ...state,
+    runtime: { ...state.runtime, personnel: nextPersonnel },
+  };
   for (let i = 0; i < count; i += 1) {
     const recruit = generatePersonnel(workingState, { locationId });
     nextPersonnel.push(recruit);
-    workingState = { ...workingState, personnel: nextPersonnel };
+    workingState = {
+      ...workingState,
+      runtime: { ...workingState.runtime, personnel: nextPersonnel },
+    };
   }
   return workingState;
 };
@@ -206,8 +212,8 @@ const isPlanInTimeWindow = (state: GameState, plan: MissionPlan) => {
     return true;
   }
   return (
-    state.nowHours >= plan.availability.startHours &&
-    state.nowHours <= plan.availability.endHours
+    state.runtime.nowHours >= plan.availability.startHours &&
+    state.runtime.nowHours <= plan.availability.endHours
   );
 };
 
@@ -216,11 +222,11 @@ const getActiveOffer = (
   planId: string,
   locationId: string,
 ) =>
-  state.missionOffers.find(
+  state.runtime.missionOffers.find(
     (offer) =>
       offer.planId === planId &&
       offer.locationId === locationId &&
-      offer.expiresAtHours > state.nowHours,
+      offer.expiresAtHours > state.runtime.nowHours,
   );
 
 export const validateAssignment = (
@@ -250,7 +256,7 @@ export const validateAssignment = (
       const personLocation = getLocation(state, person.locationId);
       if (!personLocation || personLocation.planetId !== targetPlanetId) {
         const planetName =
-          state.planets.find((planet) => planet.id === targetPlanetId)?.name ??
+          state.data.planets.find((planet) => planet.id === targetPlanetId)?.name ??
           targetPlanetId;
         errors.push(`${person.name} is not on ${planetName}`);
       }
@@ -319,7 +325,7 @@ export const assignPersonnelToMission = (
     assignedPersonnelIds: personnelIds,
     status: "active",
     remainingHours: plan.durationHours,
-    startedAtHours: state.nowHours,
+    startedAtHours: state.runtime.nowHours,
   };
 
   const offerToConsume =
@@ -329,19 +335,25 @@ export const assignPersonnelToMission = (
 
   return {
     ...state,
-    personnel: state.personnel.map((person) =>
-      personnelIds.includes(person.id)
-        ? {
-            ...person,
-            status: "assigned",
-          }
-        : person,
-    ),
-    materials: consumeMaterials(state.materials, plan.requiredMaterials),
-    missions: [...state.missions, mission],
-    missionOffers: offerToConsume
-      ? state.missionOffers.filter((offer) => offer.id !== offerToConsume.id)
-      : state.missionOffers,
+    runtime: {
+      ...state.runtime,
+      personnel: state.runtime.personnel.map((person) =>
+        personnelIds.includes(person.id)
+          ? {
+              ...person,
+              status: "assigned",
+            }
+          : person,
+      ),
+      materials: consumeMaterials(
+        state.runtime.materials,
+        plan.requiredMaterials,
+      ),
+      missions: [...state.runtime.missions, mission],
+      missionOffers: offerToConsume
+        ? state.runtime.missionOffers.filter((offer) => offer.id !== offerToConsume.id)
+        : state.runtime.missionOffers,
+    },
   };
 };
 
@@ -371,7 +383,7 @@ export const assignTravel = (
     fromLocationId: person.locationId,
     toLocationId,
     remainingHours: travelHours,
-    startedAtHours: state.nowHours,
+    startedAtHours: state.runtime.nowHours,
   };
 
   const event: TravelEvent = {
@@ -381,17 +393,20 @@ export const assignTravel = (
     fromLocationId: person.locationId,
     toLocationId,
     status: "started",
-    atHours: state.nowHours,
+    atHours: state.runtime.nowHours,
     travelHours,
   };
 
   return {
     ...state,
-    personnel: state.personnel.map((item) =>
-      item.id === personnelId ? { ...item, status: "traveling" } : item,
-    ),
-    travel: [...state.travel, travel],
-    eventLog: [...state.eventLog, event],
+    runtime: {
+      ...state.runtime,
+      personnel: state.runtime.personnel.map((item) =>
+        item.id === personnelId ? { ...item, status: "traveling" } : item,
+      ),
+      travel: [...state.runtime.travel, travel],
+      eventLog: [...state.runtime.eventLog, event],
+    },
   };
 };
 
@@ -409,10 +424,11 @@ const resolveMission = (
   const success = roll <= successChance;
 
   const rewards = success ? plan.rewards : plan.penalties ?? DEFAULT_RESOURCES;
-  const updatedResources = mergeResources(state.resources, rewards);
+  const updatedResources = mergeResources(state.runtime.resources, rewards);
 
-  const nextStatus: PersonnelStatus = success ? "idle" : "wounded";
-  const updatedPersonnel = state.personnel.map((person) => {
+  const nextStatus: PersonnelStatus =
+    success || Math.random() > 0.05 ? "idle" : "wounded";
+  const updatedPersonnel = state.runtime.personnel.map((person) => {
     if (!mission.assignedPersonnelIds.includes(person.id)) {
       return person;
     }
@@ -435,7 +451,7 @@ const resolveMission = (
     missionId: mission.id,
     planId: mission.planId,
     status: updatedMission.status,
-    resolvedAtHours: state.nowHours,
+    resolvedAtHours: state.runtime.nowHours,
     success,
     personnelIds: [...mission.assignedPersonnelIds],
     rewardsApplied: rewards,
@@ -444,12 +460,15 @@ const resolveMission = (
 
   let nextState: GameState = {
     ...state,
-    resources: updatedResources,
-    personnel: updatedPersonnel,
-    missions: state.missions.map((item) =>
-      item.id === mission.id ? updatedMission : item,
-    ),
-    eventLog: [...state.eventLog, event],
+    runtime: {
+      ...state.runtime,
+      resources: updatedResources,
+      personnel: updatedPersonnel,
+      missions: state.runtime.missions.map((item) =>
+        item.id === mission.id ? updatedMission : item,
+      ),
+      eventLog: [...state.runtime.eventLog, event],
+    },
   };
   if (success) {
     nextState = applyMaterialRewards(nextState, plan, mission.locationId);
@@ -461,8 +480,8 @@ const resolveMission = (
 };
 
 const updateMissionOffers = (state: GameState): GameState => {
-  const nowHours = state.nowHours;
-  const activeOffers = state.missionOffers.filter(
+  const nowHours = state.runtime.nowHours;
+  const activeOffers = state.runtime.missionOffers.filter(
     (offer) => offer.expiresAtHours > nowHours,
   );
   const offersByKey = new Set(
@@ -470,7 +489,7 @@ const updateMissionOffers = (state: GameState): GameState => {
   );
 
   const newOffers: MissionOffer[] = [];
-  for (const assignment of state.locationAssignments) {
+  for (const assignment of state.data.locationAssignments) {
     const plan = getMissionPlan(state, assignment.planId);
     if (!plan) {
       continue;
@@ -482,7 +501,7 @@ const updateMissionOffers = (state: GameState): GameState => {
     if (offersByKey.has(key)) {
       continue;
     }
-    const cooldownUntil = state.missions
+    const cooldownUntil = state.runtime.missions
       .filter(
         (mission) =>
           mission.planId === assignment.planId &&
@@ -508,13 +527,19 @@ const updateMissionOffers = (state: GameState): GameState => {
     }
   }
 
-  if (newOffers.length === 0 && activeOffers.length === state.missionOffers.length) {
+  if (
+    newOffers.length === 0 &&
+    activeOffers.length === state.runtime.missionOffers.length
+  ) {
     return state;
   }
 
   return {
     ...state,
-    missionOffers: [...activeOffers, ...newOffers],
+    runtime: {
+      ...state.runtime,
+      missionOffers: [...activeOffers, ...newOffers],
+    },
   };
 };
 
@@ -523,8 +548,11 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     return state;
   }
 
-  let nextState = { ...state, nowHours: state.nowHours + hours };
-  for (const mission of nextState.missions) {
+  let nextState: GameState = {
+    ...state,
+    runtime: { ...state.runtime, nowHours: state.runtime.nowHours + hours },
+  };
+  for (const mission of nextState.runtime.missions) {
     if (mission.status !== "active") {
       continue;
     }
@@ -535,17 +563,20 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     } else {
       nextState = {
         ...nextState,
-        missions: nextState.missions.map((item) =>
-          item.id === mission.id
-            ? { ...item, remainingHours: remaining }
-            : item,
-        ),
+        runtime: {
+          ...nextState.runtime,
+          missions: nextState.runtime.missions.map((item) =>
+            item.id === mission.id
+              ? { ...item, remainingHours: remaining }
+              : item,
+          ),
+        },
       };
     }
   }
 
-  if (nextState.travel.length > 0) {
-    for (const assignment of nextState.travel) {
+  if (nextState.runtime.travel.length > 0) {
+    for (const assignment of nextState.runtime.travel) {
       const remaining = assignment.remainingHours - hours;
       if (remaining <= 0) {
         const originalTravelHours = assignment.remainingHours + hours;
@@ -556,31 +587,39 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
           fromLocationId: assignment.fromLocationId,
           toLocationId: assignment.toLocationId,
           status: "arrived",
-          atHours: nextState.nowHours,
+          atHours: nextState.runtime.nowHours,
           travelHours: originalTravelHours,
         };
         nextState = {
           ...nextState,
-          personnel: nextState.personnel.map((person) =>
-            person.id === assignment.personnelId
-              ? {
-                  ...person,
-                  locationId: assignment.toLocationId,
-                  status: "idle",
-                }
-              : person,
-          ),
-          travel: nextState.travel.filter((item) => item.id !== assignment.id),
-          eventLog: [...nextState.eventLog, arrivalEvent],
+          runtime: {
+            ...nextState.runtime,
+            personnel: nextState.runtime.personnel.map((person) =>
+              person.id === assignment.personnelId
+                ? {
+                    ...person,
+                    locationId: assignment.toLocationId,
+                    status: "idle",
+                  }
+                : person,
+            ),
+            travel: nextState.runtime.travel.filter(
+              (item) => item.id !== assignment.id,
+            ),
+            eventLog: [...nextState.runtime.eventLog, arrivalEvent],
+          },
         };
       } else {
         nextState = {
           ...nextState,
-          travel: nextState.travel.map((item) =>
-            item.id === assignment.id
-              ? { ...item, remainingHours: remaining }
-              : item,
-          ),
+          runtime: {
+            ...nextState.runtime,
+            travel: nextState.runtime.travel.map((item) =>
+              item.id === assignment.id
+                ? { ...item, remainingHours: remaining }
+                : item,
+            ),
+          },
         };
       }
     }
@@ -591,10 +630,3 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
 export const refreshMissionOffers = (state: GameState): GameState =>
   updateMissionOffers(state);
 
-export const saveState = (state: GameState): string =>
-  JSON.stringify(state, null, 2);
-
-export const loadState = (raw: string): GameState => {
-  const parsed = JSON.parse(raw) as GameState;
-  return parsed;
-};

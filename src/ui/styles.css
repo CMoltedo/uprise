@@ -373,6 +373,30 @@ ul {
   cursor: grab;
 }
 
+.personnel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.personnel-status {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.personnel-status.is-idle {
+  color: #f9fafb;
+}
+
+.personnel-status.is-injured {
+  color: #ef4444;
+}
+
+.personnel-status.is-mission {
+  color: #facc15;
+}
+
 .personnel-card:active {
   cursor: grabbing;
 }
@@ -538,6 +562,27 @@ ul {
   margin-bottom: 8px;
 }
 
+.map-panel-body {
+  min-height: 440px;
+}
+
+.map-mode-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.map-mode-toggle button {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.map-mode-toggle button.is-active {
+  border-color: #22c55e;
+}
+
 .map-breadcrumbs {
   display: flex;
   gap: 6px;
@@ -565,6 +610,49 @@ ul {
 .map-breadcrumbs button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.location-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.location-list button {
+  text-align: left;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.location-list button.is-active {
+  border-color: #22c55e;
+}
+
+.location-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow: auto;
+}
+
+.location-list button {
+  text-align: left;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.location-list button.is-active {
+  border-color: #22c55e;
 }
 
 .map-grid {
@@ -843,6 +931,27 @@ button:hover {
   gap: 8px;
 }
 
+.admin-mode-toggle {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-toggle {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.admin-toggle.is-active {
+  border-color: #22c55e;
+  color: #e6edf3;
+}
+
 .admin-grid {
   display: grid;
   gap: 16px;
@@ -852,6 +961,13 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .admin-layout {
