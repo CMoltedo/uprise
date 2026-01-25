@@ -410,6 +410,10 @@ ul {
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.5);
 }
 
+.mission-drop.is-pending {
+  border-style: solid;
+}
+
 .mission-drop.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -432,6 +436,77 @@ ul {
 .personnel-card.is-flashing {
   animation: mission-flash 650ms ease-out 2;
   border-color: #facc15;
+}
+
+.personnel-card.is-selected {
+  border-color: #22c55e;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.6);
+}
+
+.mission-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mission-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.assignment-details-title {
+  margin: 12px 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.assignment-details-section {
+  margin-top: 10px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.assignment-details-item {
+  margin-left: 12px;
+}
+
+.assignment-details-sublist {
+  margin-top: 4px;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assignment-details-subitem {
+  margin-top: 0;
+}
+
+.requirement-unmet {
+  color: #f87171;
+}
+
+.confirm-button,
+.cancel-button {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.confirm-button:hover {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.cancel-button:hover {
+  background: #dc2626;
+  border-color: #dc2626;
 }
 
 .map-svg {
@@ -684,6 +759,146 @@ button:hover {
 
 .toast-location:hover {
   color: #dbeafe;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal-card {
+  width: min(420px, 90vw);
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-close {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  line-height: 1;
+  padding: 0;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slot-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  cursor: pointer;
+}
+
+.slot-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin-page h1 {
+  margin: 0;
+}
+
+.admin-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.5fr) minmax(240px, 1fr);
+  gap: 12px;
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-list-item {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-list-item.is-active {
+  border-color: #22c55e;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-form textarea {
+  background: #0d1117;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  min-height: 96px;
+}
+
+.admin-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
 }
 
 .toast-agent {

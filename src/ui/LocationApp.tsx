@@ -13,7 +13,7 @@ import scenarioOverrides from "../data/scenarioOverrides.json";
 import { SPEEDS, createHourAccumulator, getHourOfDay, getUniverseDate } from "../time.js";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
-import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
+import { SAVE_KEY, parseSave, serializeSave, type SaveFileV1 } from "../persistence.js";
 
 const formatResources = (state: GameState) =>
   `Cr ${state.resources.credits} · Intel ${state.resources.intel}`;
@@ -60,6 +60,14 @@ export const LocationApp = () => {
   const [recentlyAssignedPlans, setRecentlyAssignedPlans] = useState<
     Array<{ planId: string; expiresAt: number }>
   >([]);
+  const [pendingAssignment, setPendingAssignment] = useState<{
+    planId: string;
+    personIds: string[];
+    locationId: string;
+  } | null>(null);
+  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
+  const [saveMenuMode, setSaveMenuMode] = useState<"save" | "load" | null>(null);
+  const [saveSlotsVersion, setSaveSlotsVersion] = useState(0);
   const headerRef = useRef<HTMLElement | null>(null);
   const consolePanelRef = useRef<HTMLDivElement | null>(null);
   const flashPlanTimeoutRef = useRef<number | null>(null);
@@ -327,6 +335,10 @@ export const LocationApp = () => {
     }
     return map;
   }, [activeMissionsAll]);
+  const materialById = useMemo(
+    () => new Map(state.materials.map((item) => [item.id, item])),
+    [state.materials],
+  );
 
   const rewardModifier = useMemo(
     () =>
@@ -414,24 +426,70 @@ export const LocationApp = () => {
       flashPersonnelTimeoutRef.current = null;
     }, 1300);
   };
-
-  const handleSave = () => {
-    const payload = serializeSave(state);
-    localStorage.setItem(SAVE_KEY, payload);
-    pushToast("Game saved locally.");
+  const confirmAssignment = (
+    planId: string,
+    personIds: string[],
+    locationId: string,
+  ) => {
+    const personnel = personIds
+      .map((id) => personnelById.get(id))
+      .filter((person): person is Personnel => Boolean(person));
+    const plan = planById.get(planId);
+    if (!plan || personnel.length === 0) {
+      setPendingAssignment(null);
+      return;
+    }
+    const errors = validateAssignment(state, plan, personnel, locationId);
+    if (errors.length > 0) {
+      pushToast(errors[0]);
+      setPendingAssignment(null);
+      return;
+    }
+    const next = assignPersonnelToMission(state, planId, personIds, locationId);
+    setState(next);
+    setSelectedPlanId(planId);
+    setPendingAssignment(null);
+    setSelectedPersonnelIds([]);
+    if (plan.availability?.type !== "global") {
+      const now = Date.now();
+      setRecentlyAssignedPlans((prev) => [
+        ...prev.filter((entry) => entry.planId !== planId && entry.expiresAt > now),
+        { planId, expiresAt: now + 3000 },
+      ]);
+    }
   };
 
-  const handleLoad = () => {
-    const raw = localStorage.getItem(SAVE_KEY);
+  const SAVE_SLOTS = [1, 2, 3] as const;
+  const getSlotKey = (slot: number) => `${SAVE_KEY}-slot-${slot}`;
+  const readSlotMeta = (slot: number) => {
+    const raw = localStorage.getItem(getSlotKey(slot));
     if (!raw) {
-      pushToast("No local save found.");
-      return;
+      return null;
     }
-    const loaded = parseSave(raw);
-    if (!loaded) {
-      pushToast("Save file is invalid.");
-      return;
+    try {
+      const data = JSON.parse(raw) as Partial<SaveFileV1>;
+      if (data?.version !== 1 || data.app !== "uprise" || !data.state) {
+        return null;
+      }
+      const date = getUniverseDate(data.state.nowHours ?? 0);
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const hour = String(date.getUTCHours()).padStart(2, "0");
+      return { simStamp: `${year}-${month}-${day} ${hour}h` };
+    } catch {
+      return null;
     }
+  };
+  const slotMetas = useMemo(
+    () =>
+      SAVE_SLOTS.map((slot) => ({
+        slot,
+        meta: readSlotMeta(slot),
+      })),
+    [saveSlotsVersion],
+  );
+  const applyLoadedState = (loaded: GameState) => {
     setState(loaded);
     setMapLevel("galaxy");
     setSelectedSectorId(loaded.sectors[0]?.id ?? "");
@@ -440,7 +498,43 @@ export const LocationApp = () => {
     setSelectedPlanId(loaded.missionPlans[0]?.id ?? "");
     setTravelPersonnelId(loaded.personnel[0]?.id ?? "");
     setTravelDestinationId(loaded.locations[0]?.id ?? "");
-    pushToast("Game loaded from local save.");
+  };
+  const handleSaveSlot = (slot: number) => {
+    const payload = serializeSave(state);
+    localStorage.setItem(getSlotKey(slot), payload);
+    setSaveSlotsVersion((prev) => prev + 1);
+    pushToast(`Saved to slot ${slot}.`);
+    setSaveMenuMode(null);
+  };
+  const handleLoadSlot = (slot: number) => {
+    const raw = localStorage.getItem(getSlotKey(slot));
+    if (!raw) {
+      pushToast("No save found in that slot.");
+      return;
+    }
+    const loaded = parseSave(raw);
+    if (!loaded) {
+      pushToast("Save file is invalid.");
+      return;
+    }
+    applyLoadedState(loaded);
+    setSaveMenuMode(null);
+    pushToast(`Loaded slot ${slot}.`);
+  };
+
+  const handleRestart = () => {
+    const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
+    const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
+    const refreshed = refreshMissionOffers(scenario);
+    applyLoadedState(refreshed);
+    setPendingAssignment(null);
+    setSelectedPersonnelIds([]);
+    pushToast("Game restarted from baseline.");
+  };
+  const handleOpenAdmin = () => {
+    localStorage.setItem("uprise-admin-draft", serializeSave(state));
+    window.location.hash = "#/admin";
+    setShowConsoleMenu(false);
   };
 
   const handleAssignTravel = () => {
@@ -474,48 +568,77 @@ export const LocationApp = () => {
 
   const handleDragStart =
     (personId: string) => (event: DragEvent<HTMLDivElement>) => {
+      const nextIds = selectedPersonnelIds.includes(personId)
+        ? selectedPersonnelIds
+        : [personId];
+      event.dataTransfer.setData(
+        "application/json",
+        JSON.stringify({ personIds: nextIds }),
+      );
       event.dataTransfer.setData("text/plain", personId);
       event.dataTransfer.effectAllowed = "move";
       setDragPersonnelId(personId);
+      setSelectedPersonnelIds(nextIds);
     };
 
   const handleDropOnPlan =
     (planId: string) => (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
+      if (
+        pendingAssignment &&
+        (pendingAssignment.planId !== planId ||
+          pendingAssignment.locationId !== selectedLocationId)
+      ) {
+        return;
+      }
       setDragPlanId(null);
       setHoverPlanId(null);
       setDragPersonnelId(null);
       setMapDropLocationId(null);
-      const personId = event.dataTransfer.getData("text/plain");
-      if (!personId) {
+      const payload = event.dataTransfer.getData("application/json");
+      const parsedIds = payload
+        ? (() => {
+            try {
+              const parsed = JSON.parse(payload) as { personIds?: string[] };
+              return parsed.personIds ?? [];
+            } catch {
+              return [];
+            }
+          })()
+        : [];
+      const personIds =
+        parsedIds.length > 0
+          ? parsedIds
+          : event.dataTransfer.getData("text/plain")
+            ? [event.dataTransfer.getData("text/plain")]
+            : [];
+      if (personIds.length === 0) {
         return;
       }
-      const person = personnelById.get(personId);
+      const personnel = personIds
+        .map((id) => personnelById.get(id))
+        .filter((person): person is Personnel => Boolean(person));
       const plan = planById.get(planId);
-      if (!person || !plan) {
+      if (!plan || personnel.length === 0) {
         return;
       }
-      const errors = validateAssignment(state, plan, [person], selectedLocationId);
+      const errors = validateAssignment(state, plan, personnel, selectedLocationId);
       if (errors.length > 0) {
         pushToast(errors[0]);
         setSelectedPlanId(planId);
         return;
       }
-      const next = assignPersonnelToMission(
-        state,
-        planId,
-        [personId],
-        selectedLocationId,
-      );
-      setState(next);
       setSelectedPlanId(planId);
-      if (plan.availability?.type !== "global") {
-        const now = Date.now();
-        setRecentlyAssignedPlans((prev) => [
-          ...prev.filter((entry) => entry.planId !== planId && entry.expiresAt > now),
-          { planId, expiresAt: now + 3000 },
-        ]);
-      }
+      setPendingAssignment((prev) => {
+        if (prev && prev.planId === planId && prev.locationId === selectedLocationId) {
+          const merged = new Set([...prev.personIds, ...personIds]);
+          return {
+            ...prev,
+            personIds: Array.from(merged),
+          };
+        }
+        return { planId, personIds, locationId: selectedLocationId };
+      });
     };
 
   const handleDropOnLocation =
@@ -568,6 +691,9 @@ export const LocationApp = () => {
   };
 
   const getLocationLabel = (locationId: string) => {
+    if (locationId === "galaxy") {
+      return "Galaxy";
+    }
     const location = locationById.get(locationId);
     if (!location) {
       return locationId;
@@ -744,7 +870,7 @@ export const LocationApp = () => {
     setDialFlashKey((prev) => prev + 1);
     const interval = setInterval(() => {
       setDialFlashKey((prev) => prev + 1);
-    }, 3000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isPaused]);
 
@@ -829,6 +955,45 @@ export const LocationApp = () => {
           </div>
         ))}
       </div>
+      {saveMenuMode ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={saveMenuMode === "save" ? "Save game" : "Load game"}
+        >
+          <div className="modal-card">
+            <div className="modal-header">
+              <h3>{saveMenuMode === "save" ? "Save Game" : "Load Game"}</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSaveMenuMode(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              {slotMetas.map(({ slot, meta }) => (
+                <button
+                  key={slot}
+                  type="button"
+                  className="slot-button"
+                  disabled={saveMenuMode === "load" && !meta}
+                  onClick={() =>
+                    saveMenuMode === "save" ? handleSaveSlot(slot) : handleLoadSlot(slot)
+                  }
+                >
+                  <span>Slot {slot}</span>
+                  <span className="meta">
+                    {meta?.simStamp ? meta.simStamp : "Empty"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <header className="header" ref={headerRef}>
         <div className="card header-missions">
           <div className="header-missions-header">
@@ -921,11 +1086,29 @@ export const LocationApp = () => {
               </button>
               {showConsoleMenu ? (
                 <div className="console-menu-panel">
-                  <button type="button" onClick={handleSave}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveMenuMode("save");
+                      setShowConsoleMenu(false);
+                    }}
+                  >
                     Save
                   </button>
-                  <button type="button" onClick={handleLoad}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveMenuMode("load");
+                      setShowConsoleMenu(false);
+                    }}
+                  >
                     Load
+                  </button>
+                  <button type="button" onClick={handleOpenAdmin}>
+                    Admin
+                  </button>
+                  <button type="button" onClick={handleRestart}>
+                    Restart
                   </button>
                 </div>
               ) : null}
@@ -1230,9 +1413,25 @@ export const LocationApp = () => {
                     person.status === "traveling"
                       ? " is-unavailable"
                       : ""
-                  }${flashPersonnelId === person.id ? " is-flashing" : ""}`}
+                  }${flashPersonnelId === person.id ? " is-flashing" : ""}${
+                    selectedPersonnelIds.includes(person.id) ? " is-selected" : ""
+                  }`}
                   style={getPersonnelOptionStyle(person)}
                   draggable
+                  onClick={(event) => {
+                    if (person.status !== "idle") {
+                      return;
+                    }
+                    if (event.ctrlKey || event.metaKey) {
+                      setSelectedPersonnelIds((prev) =>
+                        prev.includes(person.id)
+                          ? prev.filter((id) => id !== person.id)
+                          : [...prev, person.id],
+                      );
+                      return;
+                    }
+                    setSelectedPersonnelIds([person.id]);
+                  }}
                   onDragStart={handleDragStart(person.id)}
                   onDragEnd={() => {
                     setDragPlanId(null);
@@ -1244,6 +1443,15 @@ export const LocationApp = () => {
                   <strong>{person.name}</strong>
                   <div className="meta">
                     {person.skills.join(", ")} · {person.status}
+                  </div>
+                  <div className="meta">
+                    <button
+                      type="button"
+                      className="inline-link"
+                      onClick={() => jumpToLocation(person.locationId)}
+                    >
+                      {getLocationLabel(person.locationId)}
+                    </button>
                   </div>
                   {missionByPersonnelId.get(person.id) ? (
                     <div className="meta">
@@ -1275,6 +1483,7 @@ export const LocationApp = () => {
                 plan.availability?.type === "global" && Boolean(activeMission);
               const isRecentlyAssigned = ghostPlanIds.has(plan.id);
               const isDisabled = isGlobalCooldown || isRecentlyAssigned;
+              const isPending = pendingAssignment?.planId === plan.id;
               const canAssign =
                 !isDisabled && dragPerson && dragPlanId === plan.id
                   ? validateAssignment(
@@ -1295,9 +1504,16 @@ export const LocationApp = () => {
                     : ""
                 }${selectedPlanId === plan.id ? " is-selected" : ""}${
                   flashPlanId === plan.id ? " is-flashing" : ""
-                }${isDisabled ? " is-disabled" : ""}`}
+                }${isDisabled ? " is-disabled" : ""}${
+                  isPending ? " is-pending is-over" : ""
+                }`}
                 onDragOver={(event) => {
-                  if (isDisabled) {
+                  if (
+                    isDisabled ||
+                    (pendingAssignment &&
+                      (pendingAssignment.planId !== plan.id ||
+                        pendingAssignment.locationId !== selectedLocationId))
+                  ) {
                     return;
                   }
                   event.preventDefault();
@@ -1306,7 +1522,12 @@ export const LocationApp = () => {
                 }}
                 onDragLeave={() => setDragPlanId(null)}
                 onDrop={(event) => {
-                  if (isDisabled) {
+                  if (
+                    isDisabled ||
+                    (pendingAssignment &&
+                      (pendingAssignment.planId !== plan.id ||
+                        pendingAssignment.locationId !== selectedLocationId))
+                  ) {
                     return;
                   }
                   handleDropOnPlan(plan.id)(event);
@@ -1318,7 +1539,7 @@ export const LocationApp = () => {
                   setSelectedPlanId(plan.id);
                 }}
                 onMouseEnter={() => {
-                  if (!isDisabled) {
+                  if (!isDisabled && dragPersonnelId) {
                     setHoverPlanId(plan.id);
                   }
                 }}
@@ -1335,19 +1556,58 @@ export const LocationApp = () => {
                     Cooldown: {Math.ceil(activeMission?.remainingHours ?? 0)}h left
                   </div>
                 ) : null}
+                {isPending ? (
+                  <div className="mission-confirm">
+                    <span className="meta">
+                      Assign{" "}
+                      {pendingAssignment?.personIds
+                        .map((id) => personnelById.get(id)?.name ?? id)
+                        .join(", ")}
+                      ?
+                    </span>
+                    <div className="mission-confirm-actions">
+                      <button
+                        type="button"
+                        className="confirm-button"
+                        onClick={() => {
+                          if (!pendingAssignment) {
+                            return;
+                          }
+                          confirmAssignment(
+                            pendingAssignment.planId,
+                            pendingAssignment.personIds,
+                            pendingAssignment.locationId,
+                          );
+                        }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="cancel-button"
+                        onClick={() => {
+                          setPendingAssignment(null);
+                          setSelectedPersonnelIds([]);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )})}
           </div>
-          {selectedPlan || hoverPlanId ? (() => {
-            const detailPlan = hoverPlanId
-              ? planById.get(hoverPlanId)
-              : selectedPlan;
+          <div className="assignment-details-title">Assignment Details</div>
+          {selectedPlan || (dragPersonnelId && hoverPlanId) ? (() => {
+            const detailPlanId = dragPersonnelId ? hoverPlanId : selectedPlanId;
+            const detailPlan = detailPlanId ? planById.get(detailPlanId) : null;
             if (!detailPlan) {
               return <div className="meta">Select an assignment to see details.</div>;
             }
-            const detailOffer = hoverPlanId
-              ? availableOffers.find((offer) => offer.planId === hoverPlanId)
-              : selectedOffer;
+            const detailOffer = detailPlanId
+              ? availableOffers.find((offer) => offer.planId === detailPlanId) ?? null
+              : null;
             return (
             <div className="meta">
               {detailPlan.name} · {detailPlan.type}
@@ -1367,43 +1627,63 @@ export const LocationApp = () => {
                   {detailPlan.availability.endHours}h
                 </div>
               ) : null}
-              <div className="meta">
+              <div className="meta assignment-details-section">Requirements</div>
+              <div className="meta assignment-details-item">
                 Skills: {detailPlan.requiredSkills.join(", ")}
               </div>
               {detailPlan.requiredMaterials?.length ? (
-                <div className="meta">
-                  Materials:{" "}
-                  {detailPlan.requiredMaterials
-                    .map(
-                      (req) =>
-                        `${req.quantity}x ${req.materialId} (${Math.round(
-                          req.consumeChance * 100,
-                        )}% consume)`,
-                    )
-                    .join(", ")}
+                <div className="meta assignment-details-item">
+                  Materials:
+                  <div className="assignment-details-sublist">
+                    {detailPlan.requiredMaterials.map((req) => {
+                      const available = materialById.get(req.materialId)?.quantity ?? 0;
+                      const isMet = available >= req.quantity;
+                      return (
+                        <div
+                          key={req.materialId}
+                          className={`meta assignment-details-subitem${
+                            isMet ? "" : " requirement-unmet"
+                          }`}
+                        >
+                          {req.quantity}x {req.materialId} (
+                          {Math.round(req.consumeChance * 100)}% consume)
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="meta assignment-details-item">Materials: none</div>
+              )}
+              <div className="meta assignment-details-section">Rewards</div>
               {detailPlan.materialRewardTableId ||
               missionTypeConfigByType.get(detailPlan.type)
                 ?.defaultMaterialRewardTableId ? (
-                <div className="meta">
-                  Materials:{" "}
-                  {materialRewardTableById
-                    .get(
-                      detailPlan.materialRewardTableId ??
-                        missionTypeConfigByType.get(detailPlan.type)
-                          ?.defaultMaterialRewardTableId ??
-                        "",
-                    )
-                    ?.entries.map((entry) => {
-                      const chance = rewardModifier
-                        ? Math.round(entry.baseChance * rewardModifier * 100)
-                        : Math.round(entry.baseChance * 100);
-                      return `${entry.quantity}x ${entry.materialId} (${chance}%)`;
-                    })
-                    .join(", ") || "none"}
+                <div className="meta assignment-details-item">
+                  Materials:
+                  <div className="assignment-details-sublist">
+                    {materialRewardTableById
+                      .get(
+                        detailPlan.materialRewardTableId ??
+                          missionTypeConfigByType.get(detailPlan.type)
+                            ?.defaultMaterialRewardTableId ??
+                          "",
+                      )
+                      ?.entries.map((entry) => {
+                        const chance = rewardModifier
+                          ? Math.round(entry.baseChance * rewardModifier * 100)
+                          : Math.round(entry.baseChance * 100);
+                        return (
+                          <div key={entry.materialId} className="meta assignment-details-subitem">
+                            {entry.quantity}x {entry.materialId} ({chance}%)
+                          </div>
+                        );
+                      }) || <div className="meta assignment-details-subitem">none</div>}
+                  </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="meta assignment-details-item">Materials: none</div>
+              )}
             </div>
             );
           })() : (

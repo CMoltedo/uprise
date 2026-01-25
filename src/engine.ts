@@ -234,23 +234,32 @@ export const validateAssignment = (
     errors.push("No personnel selected");
     return errors;
   }
+  const isGlobal = plan.availability?.type === "global";
   const targetLocationId = locationId ?? personnel[0].locationId;
-  const targetLocation = getLocation(state, targetLocationId);
-  if (!targetLocation) {
-    errors.push("Assignment target location not found.");
-    return errors;
-  }
-  const targetPlanetId = targetLocation.planetId;
-  for (const person of personnel) {
-    if (person.status !== "idle") {
-      errors.push(`${person.name} is not idle`);
+  if (!isGlobal) {
+    const targetLocation = getLocation(state, targetLocationId);
+    if (!targetLocation) {
+      errors.push("Assignment target location not found.");
+      return errors;
     }
-    const personLocation = getLocation(state, person.locationId);
-    if (!personLocation || personLocation.planetId !== targetPlanetId) {
-      const planetName =
-        state.planets.find((planet) => planet.id === targetPlanetId)?.name ??
-        targetPlanetId;
-      errors.push(`${person.name} is not on ${planetName}`);
+    const targetPlanetId = targetLocation.planetId;
+    for (const person of personnel) {
+      if (person.status !== "idle") {
+        errors.push(`${person.name} is not idle`);
+      }
+      const personLocation = getLocation(state, person.locationId);
+      if (!personLocation || personLocation.planetId !== targetPlanetId) {
+        const planetName =
+          state.planets.find((planet) => planet.id === targetPlanetId)?.name ??
+          targetPlanetId;
+        errors.push(`${person.name} is not on ${planetName}`);
+      }
+    }
+  } else {
+    for (const person of personnel) {
+      if (person.status !== "idle") {
+        errors.push(`${person.name} is not idle`);
+      }
     }
   }
 
@@ -294,7 +303,10 @@ export const assignPersonnelToMission = (
     throw new Error("One or more personnel not found");
   }
 
-  const targetLocationId = locationId ?? personnel[0].locationId;
+  const targetLocationId =
+    plan.availability?.type === "global"
+      ? "galaxy"
+      : locationId ?? personnel[0].locationId;
   const errors = validateAssignment(state, plan, personnel, targetLocationId);
   if (errors.length > 0) {
     throw new Error(errors.join("; "));
@@ -468,6 +480,20 @@ const updateMissionOffers = (state: GameState): GameState => {
     }
     const key = `${assignment.planId}:${assignment.locationId}`;
     if (offersByKey.has(key)) {
+      continue;
+    }
+    const cooldownUntil = state.missions
+      .filter(
+        (mission) =>
+          mission.planId === assignment.planId &&
+          mission.locationId === assignment.locationId,
+      )
+      .reduce(
+        (latest, mission) =>
+          Math.max(latest, mission.startedAtHours + plan.durationHours * 2),
+        0,
+      );
+    if (cooldownUntil > nowHours) {
       continue;
     }
     const roll = Math.random();
