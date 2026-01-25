@@ -1,449 +1,843 @@
 {
-  "faction": "rebels",
-  "nowHours": 0,
-  "headquartersId": "tatooine-mos-eisley",
-  "resources": {
-    "credits": 1200,
-    "materials": 300,
-    "intel": 5
+  "data": {
+    "materialCatalog": [
+      { "id": "blasters", "name": "Blasters", "tags": ["weapon"] },
+      { "id": "med-kits", "name": "Med Kits", "tags": ["medical"] },
+      { "id": "ship-fuel", "name": "Ship Fuel", "tags": ["logistics"] }
+    ],
+    "materialRewardTables": [
+      {
+        "id": "contraband-cache",
+        "name": "Contraband Cache",
+        "entries": [
+          { "materialId": "blaster-parts", "quantity": 2, "baseChance": 0.6 },
+          { "materialId": "ship-fuel", "quantity": 1, "baseChance": 0.4 }
+        ]
+      },
+      {
+        "id": "medical-stash",
+        "name": "Medical Stash",
+        "entries": [
+          { "materialId": "med-kits", "quantity": 2, "baseChance": 0.7 }
+        ]
+      },
+      {
+        "id": "industrial-find",
+        "name": "Industrial Find",
+        "entries": [
+          { "materialId": "blaster-parts", "quantity": 3, "baseChance": 0.5 },
+          { "materialId": "ship-fuel", "quantity": 2, "baseChance": 0.35 }
+        ]
+      }
+    ],
+    "missionTypeConfigs": [
+      { "type": "logistics", "defaultMaterialRewardTableId": "contraband-cache" },
+      { "type": "gather-materials", "defaultMaterialRewardTableId": "industrial-find" }
+    ],
+    "sectors": [
+      {
+        "id": "core-sector",
+        "name": "Core Sector",
+        "tags": ["core"],
+        "polygon": [
+          { "x": 0, "y": 0 },
+          { "x": 120, "y": 0 },
+          { "x": 120, "y": 120 },
+          { "x": 0, "y": 120 }
+        ]
+      },
+      {
+        "id": "rim-sector",
+        "name": "Outer Rim Sector",
+        "tags": ["rim"],
+        "polygon": [
+          { "x": 140, "y": 0 },
+          { "x": 260, "y": 0 },
+          { "x": 260, "y": 120 },
+          { "x": 140, "y": 120 }
+        ]
+      }
+    ],
+    "planets": [
+      {
+        "id": "coruscant",
+        "name": "Coruscant",
+        "sectorId": "core-sector",
+        "tags": ["capital"],
+        "position": { "x": 30, "y": 45 }
+      },
+      {
+        "id": "corellia",
+        "name": "Corellia",
+        "sectorId": "core-sector",
+        "tags": ["shipyards"],
+        "position": { "x": 70, "y": 25 }
+      },
+      {
+        "id": "bespin",
+        "name": "Bespin",
+        "sectorId": "rim-sector",
+        "tags": ["tibanna"],
+        "position": { "x": 30, "y": 25 }
+      },
+      {
+        "id": "tatooine",
+        "name": "Tatooine",
+        "sectorId": "rim-sector",
+        "tags": ["smugglers"],
+        "position": { "x": 85, "y": 70 }
+      },
+      {
+        "id": "sullust",
+        "name": "Sullust",
+        "sectorId": "rim-sector",
+        "tags": ["foundries"],
+        "position": { "x": 55, "y": 90 }
+      },
+      {
+        "id": "alderaan",
+        "name": "Alderaan",
+        "sectorId": "core-sector",
+        "tags": ["nobles"],
+        "position": { "x": 25, "y": 20 }
+      },
+      {
+        "id": "naboo",
+        "name": "Naboo",
+        "sectorId": "core-sector",
+        "tags": ["plains"],
+        "position": { "x": 95, "y": 35 }
+      },
+      {
+        "id": "kamino",
+        "name": "Kamino",
+        "sectorId": "core-sector",
+        "tags": ["cloners"],
+        "position": { "x": 60, "y": 60 }
+      },
+      {
+        "id": "geonosis",
+        "name": "Geonosis",
+        "sectorId": "core-sector",
+        "tags": ["foundries"],
+        "position": { "x": 100, "y": 80 }
+      },
+      {
+        "id": "endor",
+        "name": "Endor",
+        "sectorId": "rim-sector",
+        "tags": ["forests"],
+        "position": { "x": 20, "y": 10 }
+      },
+      {
+        "id": "hoth",
+        "name": "Hoth",
+        "sectorId": "rim-sector",
+        "tags": ["ice"],
+        "position": { "x": 110, "y": 20 }
+      },
+      {
+        "id": "dagobah",
+        "name": "Dagobah",
+        "sectorId": "rim-sector",
+        "tags": ["swamp"],
+        "position": { "x": 15, "y": 55 }
+      },
+      {
+        "id": "mustafar",
+        "name": "Mustafar",
+        "sectorId": "rim-sector",
+        "tags": ["volcanic"],
+        "position": { "x": 105, "y": 55 }
+      },
+      {
+        "id": "jakku",
+        "name": "Jakku",
+        "sectorId": "rim-sector",
+        "tags": ["scrappers"],
+        "position": { "x": 70, "y": 100 }
+      },
+      {
+        "id": "felucia",
+        "name": "Felucia",
+        "sectorId": "rim-sector",
+        "tags": ["jungles"],
+        "position": { "x": 40, "y": 105 }
+      }
+    ],
+    "locations": [
+      {
+        "id": "coruscant-senate",
+        "name": "Senate District",
+        "tags": ["political"],
+        "planetId": "coruscant",
+        "position": { "x": 35, "y": 40 },
+        "attributes": {
+          "resistance": 20,
+          "healthcareFacilities": 75,
+          "techLevel": 95,
+          "populationDensity": 95,
+          "customsScrutiny": 85,
+          "patrolFrequency": 90,
+          "garrisonStrength": 95
+        }
+      },
+      {
+        "id": "coruscant-industrial",
+        "name": "Industrial Ring",
+        "tags": ["industrial"],
+        "planetId": "coruscant",
+        "position": { "x": 20, "y": 60 },
+        "attributes": {
+          "resistance": 25,
+          "healthcareFacilities": 70,
+          "techLevel": 90,
+          "populationDensity": 85,
+          "customsScrutiny": 80,
+          "patrolFrequency": 85,
+          "garrisonStrength": 90
+        }
+      },
+      {
+        "id": "corellia-shipyards",
+        "name": "Shipyards",
+        "tags": ["shipyards"],
+        "planetId": "corellia",
+        "position": { "x": 60, "y": 35 },
+        "attributes": {
+          "resistance": 45,
+          "healthcareFacilities": 70,
+          "techLevel": 85,
+          "populationDensity": 70,
+          "customsScrutiny": 55,
+          "patrolFrequency": 60,
+          "garrisonStrength": 65
+        }
+      },
+      {
+        "id": "bespin-cloud-city",
+        "name": "Cloud City",
+        "tags": ["tibanna"],
+        "planetId": "bespin",
+        "position": { "x": 25, "y": 30 },
+        "attributes": {
+          "resistance": 35,
+          "healthcareFacilities": 60,
+          "techLevel": 70,
+          "populationDensity": 40,
+          "customsScrutiny": 30,
+          "patrolFrequency": 25,
+          "garrisonStrength": 35
+        }
+      },
+      {
+        "id": "tatooine-mos-eisley",
+        "name": "Mos Eisley",
+        "tags": ["smugglers"],
+        "planetId": "tatooine",
+        "position": { "x": 70, "y": 55 },
+        "attributes": {
+          "resistance": 55,
+          "healthcareFacilities": 35,
+          "techLevel": 40,
+          "populationDensity": 30,
+          "customsScrutiny": 25,
+          "patrolFrequency": 30,
+          "garrisonStrength": 20
+        }
+      },
+      {
+        "id": "tatooine-mos-espa",
+        "name": "Mos Espa",
+        "tags": ["smugglers"],
+        "planetId": "tatooine",
+        "position": { "x": 50, "y": 40 },
+        "attributes": {
+          "resistance": 50,
+          "healthcareFacilities": 30,
+          "techLevel": 35,
+          "populationDensity": 25,
+          "customsScrutiny": 20,
+          "patrolFrequency": 25,
+          "garrisonStrength": 18
+        }
+      },
+      {
+        "id": "sullust-capital",
+        "name": "Sullust Capital",
+        "tags": ["foundries"],
+        "planetId": "sullust",
+        "position": { "x": 55, "y": 75 },
+        "attributes": {
+          "resistance": 50,
+          "healthcareFacilities": 55,
+          "techLevel": 80,
+          "populationDensity": 45,
+          "customsScrutiny": 40,
+          "patrolFrequency": 45,
+          "garrisonStrength": 55
+        }
+      },
+      {
+        "id": "alderaan-capital",
+        "name": "Aldera City",
+        "tags": ["capital"],
+        "planetId": "alderaan",
+        "position": { "x": 30, "y": 25 },
+        "attributes": {
+          "resistance": 30,
+          "healthcareFacilities": 70,
+          "techLevel": 80,
+          "populationDensity": 60,
+          "customsScrutiny": 55,
+          "patrolFrequency": 50,
+          "garrisonStrength": 55
+        }
+      },
+      {
+        "id": "alderaan-estates",
+        "name": "Royal Estates",
+        "tags": ["nobles"],
+        "planetId": "alderaan",
+        "position": { "x": 40, "y": 30 },
+        "attributes": {
+          "resistance": 25,
+          "healthcareFacilities": 65,
+          "techLevel": 75,
+          "populationDensity": 40,
+          "customsScrutiny": 60,
+          "patrolFrequency": 45,
+          "garrisonStrength": 50
+        }
+      },
+      {
+        "id": "naboo-theed",
+        "name": "Theed",
+        "tags": ["capital"],
+        "planetId": "naboo",
+        "position": { "x": 85, "y": 35 },
+        "attributes": {
+          "resistance": 35,
+          "healthcareFacilities": 75,
+          "techLevel": 85,
+          "populationDensity": 55,
+          "customsScrutiny": 50,
+          "patrolFrequency": 45,
+          "garrisonStrength": 45
+        }
+      },
+      {
+        "id": "naboo-plains",
+        "name": "Plains Outpost",
+        "tags": ["farmland"],
+        "planetId": "naboo",
+        "position": { "x": 95, "y": 45 },
+        "attributes": {
+          "resistance": 40,
+          "healthcareFacilities": 60,
+          "techLevel": 70,
+          "populationDensity": 35,
+          "customsScrutiny": 35,
+          "patrolFrequency": 35,
+          "garrisonStrength": 35
+        }
+      },
+      {
+        "id": "kamino-city",
+        "name": "Tipoca City",
+        "tags": ["cloners"],
+        "planetId": "kamino",
+        "position": { "x": 60, "y": 60 },
+        "attributes": {
+          "resistance": 20,
+          "healthcareFacilities": 85,
+          "techLevel": 90,
+          "populationDensity": 30,
+          "customsScrutiny": 70,
+          "patrolFrequency": 65,
+          "garrisonStrength": 70
+        }
+      },
+      {
+        "id": "kamino-platforms",
+        "name": "Ocean Platforms",
+        "tags": ["industrial"],
+        "planetId": "kamino",
+        "position": { "x": 70, "y": 65 },
+        "attributes": {
+          "resistance": 15,
+          "healthcareFacilities": 80,
+          "techLevel": 85,
+          "populationDensity": 25,
+          "customsScrutiny": 75,
+          "patrolFrequency": 70,
+          "garrisonStrength": 75
+        }
+      },
+      {
+        "id": "geonosis-hive",
+        "name": "Stonelands Hive",
+        "tags": ["hive"],
+        "planetId": "geonosis",
+        "position": { "x": 100, "y": 80 },
+        "attributes": {
+          "resistance": 45,
+          "healthcareFacilities": 35,
+          "techLevel": 70,
+          "populationDensity": 50,
+          "customsScrutiny": 60,
+          "patrolFrequency": 55,
+          "garrisonStrength": 65
+        }
+      },
+      {
+        "id": "geonosis-foundry",
+        "name": "Droid Foundry",
+        "tags": ["foundries"],
+        "planetId": "geonosis",
+        "position": { "x": 110, "y": 85 },
+        "attributes": {
+          "resistance": 40,
+          "healthcareFacilities": 30,
+          "techLevel": 75,
+          "populationDensity": 45,
+          "customsScrutiny": 65,
+          "patrolFrequency": 60,
+          "garrisonStrength": 70
+        }
+      },
+      {
+        "id": "endor-village",
+        "name": "Forest Village",
+        "tags": ["tribal"],
+        "planetId": "endor",
+        "position": { "x": 20, "y": 10 },
+        "attributes": {
+          "resistance": 60,
+          "healthcareFacilities": 25,
+          "techLevel": 35,
+          "populationDensity": 20,
+          "customsScrutiny": 15,
+          "patrolFrequency": 20,
+          "garrisonStrength": 25
+        }
+      },
+      {
+        "id": "endor-outpost",
+        "name": "Rebel Outpost",
+        "tags": ["rebel"],
+        "planetId": "endor",
+        "position": { "x": 30, "y": 15 },
+        "attributes": {
+          "resistance": 65,
+          "healthcareFacilities": 40,
+          "techLevel": 45,
+          "populationDensity": 25,
+          "customsScrutiny": 20,
+          "patrolFrequency": 25,
+          "garrisonStrength": 30
+        }
+      },
+      {
+        "id": "hoth-base",
+        "name": "Echo Base",
+        "tags": ["rebel"],
+        "planetId": "hoth",
+        "position": { "x": 110, "y": 20 },
+        "attributes": {
+          "resistance": 70,
+          "healthcareFacilities": 35,
+          "techLevel": 55,
+          "populationDensity": 20,
+          "customsScrutiny": 25,
+          "patrolFrequency": 30,
+          "garrisonStrength": 40
+        }
+      },
+      {
+        "id": "hoth-wastes",
+        "name": "Frozen Wastes",
+        "tags": ["ice"],
+        "planetId": "hoth",
+        "position": { "x": 100, "y": 25 },
+        "attributes": {
+          "resistance": 50,
+          "healthcareFacilities": 20,
+          "techLevel": 40,
+          "populationDensity": 10,
+          "customsScrutiny": 20,
+          "patrolFrequency": 20,
+          "garrisonStrength": 25
+        }
+      },
+      {
+        "id": "dagobah-swamp",
+        "name": "Dark Swamp",
+        "tags": ["swamp"],
+        "planetId": "dagobah",
+        "position": { "x": 15, "y": 55 },
+        "attributes": {
+          "resistance": 55,
+          "healthcareFacilities": 15,
+          "techLevel": 30,
+          "populationDensity": 10,
+          "customsScrutiny": 10,
+          "patrolFrequency": 10,
+          "garrisonStrength": 15
+        }
+      },
+      {
+        "id": "dagobah-grotto",
+        "name": "Hidden Grotto",
+        "tags": ["secluded"],
+        "planetId": "dagobah",
+        "position": { "x": 20, "y": 60 },
+        "attributes": {
+          "resistance": 60,
+          "healthcareFacilities": 20,
+          "techLevel": 30,
+          "populationDensity": 10,
+          "customsScrutiny": 10,
+          "patrolFrequency": 10,
+          "garrisonStrength": 15
+        }
+      },
+      {
+        "id": "mustafar-forges",
+        "name": "Molten Forges",
+        "tags": ["volcanic"],
+        "planetId": "mustafar",
+        "position": { "x": 105, "y": 55 },
+        "attributes": {
+          "resistance": 35,
+          "healthcareFacilities": 25,
+          "techLevel": 65,
+          "populationDensity": 30,
+          "customsScrutiny": 60,
+          "patrolFrequency": 55,
+          "garrisonStrength": 65
+        }
+      },
+      {
+        "id": "mustafar-mines",
+        "name": "Lava Mines",
+        "tags": ["mines"],
+        "planetId": "mustafar",
+        "position": { "x": 95, "y": 60 },
+        "attributes": {
+          "resistance": 30,
+          "healthcareFacilities": 20,
+          "techLevel": 60,
+          "populationDensity": 25,
+          "customsScrutiny": 65,
+          "patrolFrequency": 60,
+          "garrisonStrength": 70
+        }
+      },
+      {
+        "id": "jakku-outpost",
+        "name": "Niima Outpost",
+        "tags": ["scrappers"],
+        "planetId": "jakku",
+        "position": { "x": 70, "y": 100 },
+        "attributes": {
+          "resistance": 45,
+          "healthcareFacilities": 20,
+          "techLevel": 35,
+          "populationDensity": 30,
+          "customsScrutiny": 25,
+          "patrolFrequency": 30,
+          "garrisonStrength": 25
+        }
+      },
+      {
+        "id": "jakku-wastes",
+        "name": "Desert Wastes",
+        "tags": ["desert"],
+        "planetId": "jakku",
+        "position": { "x": 80, "y": 105 },
+        "attributes": {
+          "resistance": 40,
+          "healthcareFacilities": 15,
+          "techLevel": 30,
+          "populationDensity": 20,
+          "customsScrutiny": 20,
+          "patrolFrequency": 25,
+          "garrisonStrength": 20
+        }
+      },
+      {
+        "id": "felucia-grove",
+        "name": "Glowgrove",
+        "tags": ["jungles"],
+        "planetId": "felucia",
+        "position": { "x": 40, "y": 105 },
+        "attributes": {
+          "resistance": 50,
+          "healthcareFacilities": 30,
+          "techLevel": 40,
+          "populationDensity": 35,
+          "customsScrutiny": 30,
+          "patrolFrequency": 35,
+          "garrisonStrength": 30
+        }
+      },
+      {
+        "id": "felucia-canopy",
+        "name": "Canopy Market",
+        "tags": ["trade"],
+        "planetId": "felucia",
+        "position": { "x": 35, "y": 95 },
+        "attributes": {
+          "resistance": 45,
+          "healthcareFacilities": 35,
+          "techLevel": 45,
+          "populationDensity": 40,
+          "customsScrutiny": 35,
+          "patrolFrequency": 40,
+          "garrisonStrength": 35
+        }
+      }
+    ],
+    "missionPlans": [
+      {
+        "id": "smuggle-supplies",
+        "name": "Smuggle Supplies",
+        "summary": "Move contraband to keep the network supplied.",
+        "type": "logistics",
+        "requiredSkills": ["agent", "pilot"],
+        "requiredMaterials": [
+          { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
+        ],
+        "durationHours": 24,
+        "baseSuccessChance": 0.7,
+        "rewards": {
+          "credits": 400,
+          "intel": 1
+        },
+        "penalties": {
+          "credits": -100,
+          "intel": 0
+        }
+      },
+      {
+        "id": "raise-credits",
+        "name": "Raise Credits",
+        "summary": "Leverage contacts for funding and influence.",
+        "type": "logistics",
+        "requiredSkills": ["diplomat"],
+        "requiredMaterials": [
+          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
+        ],
+        "durationHours": 12,
+        "baseSuccessChance": 0.6,
+        "rewards": {
+          "credits": 600,
+          "intel": 1
+        },
+        "penalties": {
+          "credits": -150,
+          "intel": 0
+        }
+      },
+      {
+        "id": "search-allies",
+        "name": "Search for Allies",
+        "summary": "Scout the Rim for sympathetic recruits.",
+        "type": "logistics",
+        "requiredSkills": ["agent", "operative"],
+        "requiredMaterials": [
+          { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
+        ],
+        "durationHours": 16,
+        "baseSuccessChance": 0.7,
+        "rewards": {
+          "credits": 200,
+          "intel": 2
+        },
+        "penalties": {
+          "credits": -60,
+          "intel": 0
+        }
+      },
+      {
+        "id": "gather-materials",
+        "name": "Gather Materials",
+        "summary": "Secure raw goods and spare parts.",
+        "type": "gather-materials",
+        "requiredSkills": ["agent"],
+        "requiredMaterials": [
+          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
+        ],
+        "durationHours": 18,
+        "baseSuccessChance": 0.75,
+        "rewards": {
+          "credits": 200,
+          "intel": 1
+        },
+        "penalties": {
+          "credits": -50,
+          "intel": 0
+        }
+      },
+      {
+        "id": "galaxy-wide-aid",
+        "name": "Galaxy-wide Aid",
+        "summary": "Coordinate relief and gain goodwill across sectors.",
+        "type": "logistics",
+        "availability": { "type": "global" },
+        "requiredSkills": ["diplomat", "operative"],
+        "requiredMaterials": [
+          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
+        ],
+        "durationHours": 20,
+        "baseSuccessChance": 0.65,
+        "rewards": {
+          "credits": 300,
+          "intel": 2
+        },
+        "penalties": {
+          "credits": -80,
+          "intel": 0
+        }
+      },
+      {
+        "id": "fleet-refuel",
+        "name": "Fleet Refuel",
+        "summary": "Stockpile fuel to keep the fleet mobile.",
+        "type": "logistics",
+        "availability": { "type": "global" },
+        "requiredSkills": ["agent"],
+        "requiredMaterials": [
+          { "materialId": "ship-fuel", "quantity": 50, "consumeChance": 1 }
+        ],
+        "durationHours": 28,
+        "baseSuccessChance": 0.55,
+        "rewards": {
+          "credits": 700,
+          "intel": 2
+        },
+        "penalties": {
+          "credits": -200,
+          "intel": 0
+        }
+      },
+      {
+        "id": "recruit-allies",
+        "name": "Recruit Allies",
+        "summary": "Build trust and bring a new ally into the cause.",
+        "type": "recruit-allies",
+        "availability": { "type": "global" },
+        "requiredSkills": ["diplomat"],
+        "durationHours": 18,
+        "baseSuccessChance": 0.6,
+        "rewards": {
+          "intel": 1
+        },
+        "penalties": {
+          "credits": -50,
+          "intel": 0
+        }
+      }
+    ],
+    "locationAssignments": [
+      {
+        "id": "assign-tatooine-smuggle",
+        "locationId": "tatooine-mos-eisley",
+        "planId": "smuggle-supplies",
+        "appearanceChance": 0.05,
+        "windowHours": 20
+      },
+      {
+        "id": "assign-tatooine-allies",
+        "locationId": "tatooine-mos-espa",
+        "planId": "search-allies",
+        "appearanceChance": 0.05,
+        "windowHours": 24
+      },
+      {
+        "id": "assign-coruscant-credits",
+        "locationId": "coruscant-senate",
+        "planId": "raise-credits",
+        "appearanceChance": 0.05,
+        "windowHours": 18
+      },
+      {
+        "id": "assign-sullust-materials",
+        "locationId": "sullust-capital",
+        "planId": "gather-materials",
+        "appearanceChance": 0.05,
+        "windowHours": 22
+      }
+    ]
   },
-  "materialCatalog": [
-    { "id": "blasters", "name": "Blasters", "tags": ["weapon"] },
-    { "id": "med-kits", "name": "Med Kits", "tags": ["medical"] },
-    { "id": "ship-fuel", "name": "Ship Fuel", "tags": ["logistics"] }
-  ],
-  "personnel": [
-    {
-      "id": "personnel-001",
-      "name": "Rowan Hale",
-      "skills": ["agent", "pilot"],
-      "traits": ["cautious", "quick-learner"],
-      "status": "idle",
-      "locationId": "tatooine-mos-eisley"
+  "runtime": {
+    "faction": "rebels",
+    "nowHours": 0,
+    "headquartersId": "tatooine-mos-eisley",
+    "resources": {
+      "credits": 1200,
+      "materials": 300,
+      "intel": 5
     },
-    {
-      "id": "personnel-002",
-      "name": "Sable Quinn",
-      "skills": ["diplomat", "operative"],
-      "traits": ["charismatic", "schemer"],
-      "status": "idle",
-      "locationId": "corellia-shipyards"
-    },
-    {
-      "id": "personnel-003",
-      "name": "Vela Dorne",
-      "skills": ["agent", "operative"],
-      "traits": ["reckless", "loyal"],
-      "status": "idle",
-      "locationId": "tatooine-mos-espa"
-    },
-    {
-      "id": "personnel-004",
-      "name": "Kato Rhys",
-      "skills": ["pilot"],
-      "traits": ["stoic", "hotheaded"],
-      "status": "idle",
-      "locationId": "sullust-capital"
-    },
-    {
-      "id": "personnel-005",
-      "name": "Mira Solis",
-      "skills": ["diplomat"],
-      "traits": ["empathetic", "proud"],
-      "status": "idle",
-      "locationId": "coruscant-senate"
-    },
-    {
-      "id": "personnel-006",
-      "name": "Tarin Vale",
-      "skills": ["diplomat", "operative"],
-      "traits": ["steady", "calculating"],
-      "status": "idle",
-      "locationId": "corellia-shipyards"
-    }
-  ],
-  "materials": [
-    { "id": "blaster-parts", "name": "Blaster Parts", "quantity": 8 },
-    { "id": "med-kits", "name": "Med Kits", "quantity": 5 },
-    { "id": "ship-fuel", "name": "Ship Fuel", "quantity": 12 }
-  ],
-  "materialRewardTables": [
-    {
-      "id": "contraband-cache",
-      "name": "Contraband Cache",
-      "entries": [
-        { "materialId": "blaster-parts", "quantity": 2, "baseChance": 0.6 },
-        { "materialId": "ship-fuel", "quantity": 1, "baseChance": 0.4 }
-      ]
-    },
-    {
-      "id": "medical-stash",
-      "name": "Medical Stash",
-      "entries": [
-        { "materialId": "med-kits", "quantity": 2, "baseChance": 0.7 }
-      ]
-    },
-    {
-      "id": "industrial-find",
-      "name": "Industrial Find",
-      "entries": [
-        { "materialId": "blaster-parts", "quantity": 3, "baseChance": 0.5 },
-        { "materialId": "ship-fuel", "quantity": 2, "baseChance": 0.35 }
-      ]
-    }
-  ],
-  "missionTypeConfigs": [
-    { "type": "logistics", "defaultMaterialRewardTableId": "contraband-cache" },
-    { "type": "gather-materials", "defaultMaterialRewardTableId": "industrial-find" }
-  ],
-  "sectors": [
-    {
-      "id": "core-sector",
-      "name": "Core Sector",
-      "tags": ["core"],
-      "polygon": [
-        { "x": 0, "y": 0 },
-        { "x": 120, "y": 0 },
-        { "x": 120, "y": 120 },
-        { "x": 0, "y": 120 }
-      ]
-    },
-    {
-      "id": "rim-sector",
-      "name": "Outer Rim Sector",
-      "tags": ["rim"],
-      "polygon": [
-        { "x": 140, "y": 0 },
-        { "x": 260, "y": 0 },
-        { "x": 260, "y": 120 },
-        { "x": 140, "y": 120 }
-      ]
-    }
-  ],
-  "planets": [
-    {
-      "id": "coruscant",
-      "name": "Coruscant",
-      "sectorId": "core-sector",
-      "tags": ["capital"],
-      "position": { "x": 30, "y": 45 }
-    },
-    {
-      "id": "corellia",
-      "name": "Corellia",
-      "sectorId": "core-sector",
-      "tags": ["shipyards"],
-      "position": { "x": 70, "y": 25 }
-    },
-    {
-      "id": "bespin",
-      "name": "Bespin",
-      "sectorId": "rim-sector",
-      "tags": ["tibanna"],
-      "position": { "x": 30, "y": 25 }
-    },
-    {
-      "id": "tatooine",
-      "name": "Tatooine",
-      "sectorId": "rim-sector",
-      "tags": ["smugglers"],
-      "position": { "x": 85, "y": 70 }
-    },
-    {
-      "id": "sullust",
-      "name": "Sullust",
-      "sectorId": "rim-sector",
-      "tags": ["foundries"],
-      "position": { "x": 55, "y": 90 }
-    }
-  ],
-  "locations": [
-    {
-      "id": "coruscant-senate",
-      "name": "Senate District",
-      "tags": ["political"],
-      "planetId": "coruscant",
-      "position": { "x": 35, "y": 40 },
-      "attributes": {
-        "resistance": 20,
-        "healthcareFacilities": 75,
-        "techLevel": 95,
-        "populationDensity": 95,
-        "customsScrutiny": 85,
-        "patrolFrequency": 90,
-        "garrisonStrength": 95
-      }
-    },
-    {
-      "id": "coruscant-industrial",
-      "name": "Industrial Ring",
-      "tags": ["industrial"],
-      "planetId": "coruscant",
-      "position": { "x": 20, "y": 60 },
-      "attributes": {
-        "resistance": 25,
-        "healthcareFacilities": 70,
-        "techLevel": 90,
-        "populationDensity": 85,
-        "customsScrutiny": 80,
-        "patrolFrequency": 85,
-        "garrisonStrength": 90
-      }
-    },
-    {
-      "id": "corellia-shipyards",
-      "name": "Shipyards",
-      "tags": ["shipyards"],
-      "planetId": "corellia",
-      "position": { "x": 60, "y": 35 },
-      "attributes": {
-        "resistance": 45,
-        "healthcareFacilities": 70,
-        "techLevel": 85,
-        "populationDensity": 70,
-        "customsScrutiny": 55,
-        "patrolFrequency": 60,
-        "garrisonStrength": 65
-      }
-    },
-    {
-      "id": "bespin-cloud-city",
-      "name": "Cloud City",
-      "tags": ["tibanna"],
-      "planetId": "bespin",
-      "position": { "x": 25, "y": 30 },
-      "attributes": {
-        "resistance": 35,
-        "healthcareFacilities": 60,
-        "techLevel": 70,
-        "populationDensity": 40,
-        "customsScrutiny": 30,
-        "patrolFrequency": 25,
-        "garrisonStrength": 35
-      }
-    },
-    {
-      "id": "tatooine-mos-eisley",
-      "name": "Mos Eisley",
-      "tags": ["smugglers"],
-      "planetId": "tatooine",
-      "position": { "x": 70, "y": 55 },
-      "attributes": {
-        "resistance": 55,
-        "healthcareFacilities": 35,
-        "techLevel": 40,
-        "populationDensity": 30,
-        "customsScrutiny": 25,
-        "patrolFrequency": 30,
-        "garrisonStrength": 20
-      }
-    },
-    {
-      "id": "tatooine-mos-espa",
-      "name": "Mos Espa",
-      "tags": ["smugglers"],
-      "planetId": "tatooine",
-      "position": { "x": 50, "y": 40 },
-      "attributes": {
-        "resistance": 50,
-        "healthcareFacilities": 30,
-        "techLevel": 35,
-        "populationDensity": 25,
-        "customsScrutiny": 20,
-        "patrolFrequency": 25,
-        "garrisonStrength": 18
-      }
-    },
-    {
-      "id": "sullust-capital",
-      "name": "Sullust Capital",
-      "tags": ["foundries"],
-      "planetId": "sullust",
-      "position": { "x": 55, "y": 75 },
-      "attributes": {
-        "resistance": 50,
-        "healthcareFacilities": 55,
-        "techLevel": 80,
-        "populationDensity": 45,
-        "customsScrutiny": 40,
-        "patrolFrequency": 45,
-        "garrisonStrength": 55
-      }
-    }
-  ],
-  "missionPlans": [
-    {
-      "id": "smuggle-supplies",
-      "name": "Smuggle Supplies",
-      "summary": "Move contraband to keep the network supplied.",
-      "type": "logistics",
-      "requiredSkills": ["agent", "pilot"],
-      "requiredMaterials": [
-        { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
-      ],
-      "durationHours": 24,
-      "baseSuccessChance": 0.7,
-      "rewards": {
-        "credits": 400,
-        "intel": 1
+    "personnel": [
+      {
+        "id": "personnel-001",
+        "name": "Rowan Hale",
+        "skills": ["agent", "pilot"],
+        "traits": ["cautious", "quick-learner"],
+        "status": "idle",
+        "locationId": "tatooine-mos-eisley"
       },
-      "penalties": {
-        "credits": -100,
-        "intel": 0
-      }
-    },
-    {
-      "id": "raise-credits",
-      "name": "Raise Credits",
-      "summary": "Leverage contacts for funding and influence.",
-      "type": "logistics",
-      "requiredSkills": ["diplomat"],
-      "requiredMaterials": [
-        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
-      ],
-      "durationHours": 12,
-      "baseSuccessChance": 0.6,
-      "rewards": {
-        "credits": 600,
-        "intel": 1
+      {
+        "id": "personnel-002",
+        "name": "Sable Quinn",
+        "skills": ["diplomat", "operative"],
+        "traits": ["charismatic", "schemer"],
+        "status": "idle",
+        "locationId": "corellia-shipyards"
       },
-      "penalties": {
-        "credits": -150,
-        "intel": 0
-      }
-    },
-    {
-      "id": "search-allies",
-      "name": "Search for Allies",
-      "summary": "Scout the Rim for sympathetic recruits.",
-      "type": "logistics",
-      "requiredSkills": ["agent", "operative"],
-      "requiredMaterials": [
-        { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
-      ],
-      "durationHours": 16,
-      "baseSuccessChance": 0.7,
-      "rewards": {
-        "credits": 200,
-        "intel": 2
+      {
+        "id": "personnel-003",
+        "name": "Vela Dorne",
+        "skills": ["agent", "operative"],
+        "traits": ["reckless", "loyal"],
+        "status": "idle",
+        "locationId": "tatooine-mos-espa"
       },
-      "penalties": {
-        "credits": -60,
-        "intel": 0
-      }
-    },
-    {
-      "id": "gather-materials",
-      "name": "Gather Materials",
-      "summary": "Secure raw goods and spare parts.",
-      "type": "gather-materials",
-      "requiredSkills": ["agent"],
-      "requiredMaterials": [
-        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
-      ],
-      "durationHours": 18,
-      "baseSuccessChance": 0.75,
-      "rewards": {
-        "credits": 200,
-        "intel": 1
+      {
+        "id": "personnel-004",
+        "name": "Kato Rhys",
+        "skills": ["pilot"],
+        "traits": ["stoic", "hotheaded"],
+        "status": "idle",
+        "locationId": "sullust-capital"
       },
-      "penalties": {
-        "credits": -50,
-        "intel": 0
-      }
-    },
-    {
-      "id": "galaxy-wide-aid",
-      "name": "Galaxy-wide Aid",
-      "summary": "Coordinate relief and gain goodwill across sectors.",
-      "type": "logistics",
-      "availability": { "type": "global" },
-      "requiredSkills": ["diplomat", "operative"],
-      "requiredMaterials": [
-        { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
-      ],
-      "durationHours": 20,
-      "baseSuccessChance": 0.65,
-      "rewards": {
-        "credits": 300,
-        "intel": 2
+      {
+        "id": "personnel-005",
+        "name": "Mira Solis",
+        "skills": ["diplomat"],
+        "traits": ["empathetic", "proud"],
+        "status": "idle",
+        "locationId": "coruscant-senate"
       },
-      "penalties": {
-        "credits": -80,
-        "intel": 0
+      {
+        "id": "personnel-006",
+        "name": "Tarin Vale",
+        "skills": ["diplomat", "operative"],
+        "traits": ["steady", "calculating"],
+        "status": "idle",
+        "locationId": "corellia-shipyards"
       }
-    },
-    {
-      "id": "fleet-refuel",
-      "name": "Fleet Refuel",
-      "summary": "Stockpile fuel to keep the fleet mobile.",
-      "type": "logistics",
-      "availability": { "type": "global" },
-      "requiredSkills": ["agent"],
-      "requiredMaterials": [
-        { "materialId": "ship-fuel", "quantity": 50, "consumeChance": 1 }
-      ],
-      "durationHours": 28,
-      "baseSuccessChance": 0.55,
-      "rewards": {
-        "credits": 700,
-        "intel": 2
-      },
-      "penalties": {
-        "credits": -200,
-        "intel": 0
-      }
-    },
-    {
-      "id": "recruit-allies",
-      "name": "Recruit Allies",
-      "summary": "Build trust and bring a new ally into the cause.",
-      "type": "recruit-allies",
-      "availability": { "type": "global" },
-      "requiredSkills": ["diplomat"],
-      "durationHours": 18,
-      "baseSuccessChance": 0.6,
-      "rewards": {
-        "intel": 1
-      },
-      "penalties": {
-        "credits": -50,
-        "intel": 0
-      }
-    }
-  ],
-  "locationAssignments": [
-    {
-      "id": "assign-tatooine-smuggle",
-      "locationId": "tatooine-mos-eisley",
-      "planId": "smuggle-supplies",
-      "appearanceChance": 0.05,
-      "windowHours": 20
-    },
-    {
-      "id": "assign-tatooine-allies",
-      "locationId": "tatooine-mos-espa",
-      "planId": "search-allies",
-      "appearanceChance": 0.05,
-      "windowHours": 24
-    },
-    {
-      "id": "assign-coruscant-credits",
-      "locationId": "coruscant-senate",
-      "planId": "raise-credits",
-      "appearanceChance": 0.05,
-      "windowHours": 18
-    },
-    {
-      "id": "assign-sullust-materials",
-      "locationId": "sullust-capital",
-      "planId": "gather-materials",
-      "appearanceChance": 0.05,
-      "windowHours": 22
-    }
-  ],
-  "missionOffers": [],
-  "missions": [],
-  "travel": [],
-  "eventLog": []
+    ],
+    "materials": [
+      { "id": "blaster-parts", "name": "Blaster Parts", "quantity": 8 },
+      { "id": "med-kits", "name": "Med Kits", "quantity": 5 },
+      { "id": "ship-fuel", "name": "Ship Fuel", "quantity": 12 }
+    ],
+    "missions": [],
+    "missionOffers": [],
+    "travel": [],
+    "eventLog": []
+  }
 }
