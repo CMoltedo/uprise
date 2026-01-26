@@ -12,12 +12,13 @@ import type {
   MissionPlan,
   MissionMaterialRequirement,
   Personnel,
-  PersonnelSkill,
+  PersonnelRole,
   PersonnelStatus,
   ResourceBundle,
   TravelAssignment,
 } from "./models.js";
 import { generatePersonnel } from "./generators.js";
+import balance from "./data/balance.json";
 
 const DEFAULT_RESOURCES: ResourceBundle = {
   credits: 0,
@@ -26,6 +27,85 @@ const DEFAULT_RESOURCES: ResourceBundle = {
 };
 
 const clampChance = (chance: number) => Math.max(0, Math.min(1, chance));
+
+const getModifierSummary = (
+  entries: string[],
+  modifiers: Record<string, number> | undefined,
+) => {
+  let bonus = 0;
+  let penalty = 0;
+  const bonuses: string[] = [];
+  const penalties: string[] = [];
+
+  for (const entry of entries) {
+    const modifier = modifiers?.[entry] ?? 0;
+    if (modifier > 0) {
+      bonus += modifier;
+      bonuses.push(entry);
+    } else if (modifier < 0) {
+      penalty += Math.abs(modifier);
+      penalties.push(entry);
+    }
+  }
+
+  return {
+    bonus,
+    penalty,
+    total: bonus - penalty,
+    bonuses,
+    penalties,
+  };
+};
+
+export const getTraitSuccessModifier = (personnel: Personnel[]) => {
+  const traitModifiers = balance.traitSuccessModifiers as
+    | Record<string, number>
+    | undefined;
+  const traits = personnel.flatMap((person) => person.traits ?? []);
+  return getModifierSummary(traits, traitModifiers);
+};
+
+export const getRoleSuccessModifier = (personnel: Personnel[]) => {
+  const roleModifiers = balance.roleSuccessModifiers as
+    | Record<string, number>
+    | undefined;
+  const roles = personnel.flatMap((person) => person.roles);
+  return getModifierSummary(roles, roleModifiers);
+};
+
+export const getMissionRewardModifier = (personnel: Personnel[]) => {
+  const rewardModifiers = balance.roleRewardModifiers as
+    | Record<string, number>
+    | undefined;
+  const roles = personnel.flatMap((person) => person.roles);
+  return getModifierSummary(roles, rewardModifiers);
+};
+
+export const getMissionConsumeModifier = (personnel: Personnel[]) => {
+  const consumeModifiers = balance.roleConsumeModifiers as
+    | Record<string, number>
+    | undefined;
+  const roles = personnel.flatMap((person) => person.roles);
+  return getModifierSummary(roles, consumeModifiers);
+};
+
+export const getMissionSuccessChance = (
+  plan: MissionPlan,
+  personnel: Personnel[],
+) => {
+  const baseChance = plan.baseSuccessChance;
+  const traitModifier = getTraitSuccessModifier(personnel);
+  const roleModifier = getRoleSuccessModifier(personnel);
+  const totalModifier = traitModifier.total + roleModifier.total;
+  const chance = clampChance(baseChance + totalModifier);
+  return {
+    chance,
+    baseChance,
+    traitModifier,
+    roleModifier,
+    totalModifier,
+  };
+};
 
 const mergeResources = (
   base: ResourceBundle,
@@ -38,6 +118,30 @@ const mergeResources = (
     credits: base.credits + (delta.credits ?? 0),
     materials: base.materials + (delta.materials ?? 0),
     intel: base.intel + (delta.intel ?? 0),
+  };
+};
+
+const applyRewardModifier = (
+  rewards: Partial<ResourceBundle>,
+  modifier: number,
+): Partial<ResourceBundle> => {
+  if (!modifier) {
+    return rewards;
+  }
+  const multiplier = 1 + modifier;
+  return {
+    credits:
+      rewards.credits !== undefined
+        ? Math.round(rewards.credits * multiplier)
+        : undefined,
+    materials:
+      rewards.materials !== undefined
+        ? Math.round(rewards.materials * multiplier)
+        : undefined,
+    intel:
+      rewards.intel !== undefined
+        ? Math.round(rewards.intel * multiplier)
+        : undefined,
   };
 };
 
@@ -109,6 +213,7 @@ const hasMaterials = (
 const consumeMaterials = (
   materials: MaterialItem[],
   requirements?: MissionMaterialRequirement[],
+  consumeModifier = 0,
 ): MaterialItem[] => {
   if (!requirements || requirements.length === 0) {
     return materials;
@@ -123,7 +228,8 @@ const consumeMaterials = (
     }
 
     const roll = Math.random();
-    const consume = roll <= requirement.consumeChance;
+    const effectiveChance = clampChance(requirement.consumeChance + consumeModifier);
+    const consume = roll <= effectiveChance;
     const consumedQty = consume ? requirement.quantity : 0;
     return {
       ...item,
@@ -151,6 +257,7 @@ const applyMaterialRewards = (
   state: GameState,
   plan: MissionPlan,
   locationId: string,
+  rewardModifier = 0,
 ): GameState => {
   const table = getMaterialRewardTableForPlan(state, plan);
   if (!table || table.entries.length === 0) {
@@ -159,7 +266,7 @@ const applyMaterialRewards = (
   const modifier = getMaterialRewardModifier(state, locationId);
   let nextMaterials = [...state.runtime.materials];
   for (const entry of table.entries) {
-    const chance = Math.max(0, Math.min(1, entry.baseChance * modifier));
+    const chance = clampChance(entry.baseChance * modifier + rewardModifier);
     if (Math.random() > chance) {
       continue;
     }
@@ -269,13 +376,13 @@ export const validateAssignment = (
     }
   }
 
-  if (plan.requiredSkills.length > 0) {
-    const required = new Set<PersonnelSkill>(plan.requiredSkills);
+  if (plan.requiredRoles.length > 0) {
+    const required = new Set<PersonnelRole>(plan.requiredRoles);
     const hasMatch = personnel.some((person) =>
-      person.skills.some((skill) => required.has(skill)),
+      person.roles.some((role) => required.has(role)),
     );
     if (!hasMatch) {
-      errors.push(`Missing skills: ${plan.requiredSkills.join(", ")}`);
+      errors.push(`Missing roles: ${plan.requiredRoles.join(", ")}`);
     }
   }
   if (!isPlanInTimeWindow(state, plan)) {
@@ -348,6 +455,7 @@ export const assignPersonnelToMission = (
       materials: consumeMaterials(
         state.runtime.materials,
         plan.requiredMaterials,
+        getMissionConsumeModifier(personnel).total,
       ),
       missions: [...state.runtime.missions, mission],
       missionOffers: offerToConsume
@@ -419,15 +527,22 @@ const resolveMission = (
     return state;
   }
 
-  const successChance = clampChance(plan.baseSuccessChance);
+  const assignedPersonnel = state.runtime.personnel.filter((person) =>
+    mission.assignedPersonnelIds.includes(person.id),
+  );
+  const { chance: successChance } = getMissionSuccessChance(plan, assignedPersonnel);
+  const rewardModifier = getMissionRewardModifier(assignedPersonnel);
   const roll = Math.random();
   const success = roll <= successChance;
 
-  const rewards = success ? plan.rewards : plan.penalties ?? DEFAULT_RESOURCES;
+  const rewards = success
+    ? applyRewardModifier(plan.rewards, rewardModifier.total)
+    : plan.penalties ?? DEFAULT_RESOURCES;
   const updatedResources = mergeResources(state.runtime.resources, rewards);
 
+  const injuryChance = balance.missionFailureInjuryChance ?? 0.05;
   const nextStatus: PersonnelStatus =
-    success || Math.random() > 0.05 ? "idle" : "wounded";
+    success || Math.random() > injuryChance ? "idle" : "wounded";
   const updatedPersonnel = state.runtime.personnel.map((person) => {
     if (!mission.assignedPersonnelIds.includes(person.id)) {
       return person;
@@ -471,9 +586,15 @@ const resolveMission = (
     },
   };
   if (success) {
-    nextState = applyMaterialRewards(nextState, plan, mission.locationId);
+    nextState = applyMaterialRewards(
+      nextState,
+      plan,
+      mission.locationId,
+      rewardModifier.total,
+    );
     if (plan.type === "recruit-allies") {
-      nextState = applyRecruitRewards(nextState, mission.locationId, 1);
+      const recruitCount = balance.recruitAlliesRewardCount ?? 1;
+      nextState = applyRecruitRewards(nextState, mission.locationId, recruitCount);
     }
   }
   return nextState;

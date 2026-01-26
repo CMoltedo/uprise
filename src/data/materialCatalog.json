@@ -1,0 +1,5 @@
+[
+  { "id": "blasters", "name": "Blasters", "tags": ["weapon"] },
+  { "id": "med-kits", "name": "Med Kits", "tags": ["medical"] },
+  { "id": "ship-fuel", "name": "Ship Fuel", "tags": ["logistics"] }
+]

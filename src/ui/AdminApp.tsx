@@ -33,7 +33,7 @@ const loadInitialState = (mode: "current" | "baseline"): GameState => {
         // ignore invalid baseline drafts
       }
     }
-    return baseline;
+    return buildScenario(baseline);
   }
   const raw = localStorage.getItem(draftKey);
   const runtimeDraft = raw ? parseSave(raw) : null;
@@ -201,7 +201,7 @@ export const AdminApp = () => {
       name: "New Mission",
       summary: "Describe the mission.",
       type: "logistics",
-      requiredSkills: [],
+      requiredRoles: [],
       durationHours: 12,
       baseSuccessChance: 0.5,
       rewards: {},
@@ -252,7 +252,7 @@ export const AdminApp = () => {
     const person: Personnel = {
       id,
       name: "New Agent",
-      skills: [],
+      roles: [],
       traits: [],
       status: "idle",
       locationId,
@@ -438,14 +438,14 @@ export const AdminApp = () => {
                     </label>
                   </div>
                   <label className="field">
-                    Required skills (comma)
+                    Required roles (comma)
                     <input
                       type="text"
-                      value={selectedMission.requiredSkills.join(", ")}
+                      value={selectedMission.requiredRoles.join(", ")}
                       disabled={!isBaseline}
                       onChange={(event) =>
                         updateMission(selectedMission.id, {
-                          requiredSkills: event.target.value
+                          requiredRoles: event.target.value
                             .split(",")
                             .map((item) => item.trim())
                             .filter(Boolean),
@@ -787,10 +787,10 @@ export const AdminApp = () => {
                     Skills (comma)
                     <input
                       type="text"
-                      value={selectedPersonnel.skills.join(", ")}
+                      value={selectedPersonnel.roles.join(", ")}
                       onChange={(event) =>
                         updatePersonnel(selectedPersonnel.id, {
-                          skills: event.target.value
+                          roles: event.target.value
                             .split(",")
                             .map((item) => item.trim())
                             .filter(Boolean),

@@ -1,6 +1,6 @@
 export type Faction = "rebels" | "empire";
 
-export type PersonnelSkill = "agent" | "diplomat" | "pilot" | "operative";
+export type PersonnelRole = "agent" | "diplomat" | "pilot" | "operative";
 export type PersonnelStatus =
   | "idle"
   | "assigned"
@@ -14,7 +14,7 @@ export type MissionType = "logistics" | "gather-materials" | "recruit-allies";
 export interface Personnel {
   id: string;
   name: string;
-  skills: PersonnelSkill[];
+  roles: PersonnelRole[];
   traits?: string[];
   status: PersonnelStatus;
   locationId: string;
@@ -93,7 +93,7 @@ export interface MissionPlan {
   summary: string;
   type: MissionType;
   availability?: MissionAvailability;
-  requiredSkills: PersonnelSkill[];
+  requiredRoles: PersonnelRole[];
   requiredMaterials?: MissionMaterialRequirement[];
   materialRewardTableId?: string;
   durationHours: number;

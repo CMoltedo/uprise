@@ -1,0 +1,53 @@
+{
+  "traitSuccessModifiers": {
+    "cautious": 0.03,
+    "quick-learner": 0.02,
+    "charismatic": 0.03,
+    "schemer": 0.02,
+    "loyal": 0.02,
+    "stoic": 0.01,
+    "empathetic": 0.02,
+    "steady": 0.02,
+    "calculating": 0.03,
+    "meticulous": 0.03,
+    "reckless": -0.04,
+    "hotheaded": -0.03,
+    "proud": -0.02,
+    "nervous": -0.03
+  },
+  "roleSuccessModifiers": {
+    "agent": 0.01,
+    "diplomat": 0.02,
+    "pilot": 0.01,
+    "operative": 0.02
+  },
+  "roleRewardModifiers": {
+    "agent": 0.02,
+    "diplomat": 0.05,
+    "pilot": 0.01,
+    "operative": 0.03
+  },
+  "roleConsumeModifiers": {
+    "agent": -0.02,
+    "diplomat": -0.01,
+    "pilot": -0.05,
+    "operative": -0.03
+  },
+  "missionFailureInjuryChance": 0.05,
+  "recruitAlliesRewardCount": 1,
+  "personnelTraits": [
+    "cautious",
+    "quick-learner",
+    "charismatic",
+    "schemer",
+    "reckless",
+    "loyal",
+    "stoic",
+    "hotheaded",
+    "empathetic",
+    "proud",
+    "observant",
+    "resourceful"
+  ],
+  "personnelRoles": ["agent", "diplomat", "pilot", "operative"]
+}

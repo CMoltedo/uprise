@@ -1,4 +1,5 @@
-import type { GameState, Personnel, PersonnelSkill } from "./models.js";
+import type { GameState, Personnel, PersonnelRole } from "./models.js";
+import balance from "./data/balance.json";
 
 const FIRST_NAMES = [
   "Avery",
@@ -33,22 +34,10 @@ const LAST_NAMES = [
   "Wren",
 ];
 
-const TRAITS = [
-  "cautious",
-  "quick-learner",
-  "charismatic",
-  "schemer",
-  "reckless",
-  "loyal",
-  "stoic",
-  "hotheaded",
-  "empathetic",
-  "proud",
-  "observant",
-  "resourceful",
-];
+const TRAITS = balance.personnelTraits ?? [];
 
-const SKILLS: PersonnelSkill[] = ["agent", "diplomat", "pilot", "operative"];
+const ROLES: PersonnelRole[] = (balance.personnelRoles ??
+  []) as PersonnelRole[];
 
 const pickOne = <T,>(items: T[]) => items[Math.floor(Math.random() * items.length)];
 
@@ -92,7 +81,7 @@ export const generatePersonnel = (
   const existingNames = new Set(
     state.runtime.personnel.map((person) => person.name),
   );
-  const skillCount = Math.random() < 0.6 ? 1 : 2;
+  const roleCount = Math.random() < 0.6 ? 1 : 2;
   const traitCount = Math.random() < 0.5 ? 1 : 2;
   const locationId =
     options?.locationId ??
@@ -103,7 +92,7 @@ export const generatePersonnel = (
   return {
     id: buildUniqueId("personnel", existingIds),
     name: buildUniqueName(existingNames),
-    skills: pickMany(SKILLS, skillCount),
+    roles: pickMany(ROLES, roleCount),
     traits: pickMany(TRAITS, traitCount),
     status: "idle",
     locationId,

@@ -18,6 +18,8 @@ import type {
   Sector,
   TravelAssignment,
 } from "./models.js";
+import materialCatalogData from "./data/materialCatalog.json";
+import worldData from "./data/worldData.json";
 
 type WithId = { id: string };
 type WithType = { type: string };
@@ -97,44 +99,51 @@ const mergeLocation = (
   ...current,
   ...override,
   tags: override.tags ?? current.tags,
-  missionPlanIds: override.missionPlanIds ?? current.missionPlanIds,
-  sector: override.sector ?? current.sector,
   position: override.position ?? current.position,
   attributes: {
     ...current.attributes,
     ...override.attributes,
   },
-  subLocations: override.subLocations ?? current.subLocations,
 });
 
 export const buildScenario = (
   baseline: GameState,
   overrides?: ScenarioOverrides,
 ): GameState => {
+  const baseData: GameData = {
+    ...baseline.data,
+    materialCatalog: materialCatalogData as MaterialCatalogItem[],
+    sectors: worldData.sectors as Sector[],
+    planets: worldData.planets as Planet[],
+    locations: worldData.locations as Location[],
+  };
   if (!overrides) {
-    return baseline;
+    return {
+      data: baseData,
+      runtime: baseline.runtime,
+    };
   }
 
   return {
     data: {
-      ...baseline.data,
+      ...baseData,
       materialCatalog: mergeById(
-        baseline.data.materialCatalog,
+        baseData.materialCatalog,
         overrides.data?.materialCatalog,
         (current, override) => ({ ...current, ...override }),
       ),
       materialRewardTables: mergeById(
-        baseline.data.materialRewardTables,
+        baseData.materialRewardTables,
         overrides.data?.materialRewardTables,
         (current, override) => ({ ...current, ...override }),
       ),
       missionTypeConfigs: mergeByType(
-        baseline.data.missionTypeConfigs,
+        baseData.missionTypeConfigs,
         overrides.data?.missionTypeConfigs,
         (current, override) => ({ ...current, ...override }),
       ),
       sectors: mergeById(
-        baseline.data.sectors,
+        baseData.sectors,
         overrides.data?.sectors,
         (current, override) => ({
           ...current,
@@ -144,7 +153,7 @@ export const buildScenario = (
         }),
       ),
       planets: mergeById(
-        baseline.data.planets,
+        baseData.planets,
         overrides.data?.planets,
         (current, override) => ({
           ...current,
@@ -154,17 +163,17 @@ export const buildScenario = (
         }),
       ),
       locations: mergeById(
-        baseline.data.locations,
+        baseData.locations,
         overrides.data?.locations,
         mergeLocation,
       ),
       missionPlans: mergeById(
-        baseline.data.missionPlans,
+        baseData.missionPlans,
         overrides.data?.missionPlans,
         (current, override) => ({ ...current, ...override }),
       ),
       locationAssignments: mergeById(
-        baseline.data.locationAssignments,
+        baseData.locationAssignments,
         overrides.data?.locationAssignments,
         (current, override) => ({ ...current, ...override }),
       ),
@@ -207,7 +216,7 @@ export const buildScenario = (
       eventLog: mergeById(
         baseline.runtime.eventLog,
         overrides.runtime?.eventLog,
-        (current, override) => ({ ...current, ...override }),
+        (current, override) => ({ ...current, ...override }) as EventLogEntry,
       ),
     },
   };

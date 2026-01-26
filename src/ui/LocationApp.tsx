@@ -4,6 +4,7 @@ import {
   assignPersonnelToMission,
   assignTravel,
   getMaterialRewardModifier,
+  getMissionSuccessChance,
   refreshMissionOffers,
   validateAssignment,
 } from "../engine.js";
@@ -1543,7 +1544,7 @@ export const LocationApp = () => {
                     </span>
                   </div>
                   <div className="meta">
-                    {person.skills.join(", ")}
+                    {person.roles.join(", ")}
                   </div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
@@ -1586,7 +1587,7 @@ export const LocationApp = () => {
                       {statusMeta.label}
                     </span>
                   </div>
-                  <div className="meta">Skills: {person.skills.join(", ")}</div>
+                  <div className="meta">Roles: {person.roles.join(", ")}</div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
                   </div>
@@ -1634,6 +1635,19 @@ export const LocationApp = () => {
               const isRecentlyAssigned = ghostPlanIds.has(plan.id);
               const isDisabled = isGlobalCooldown || isRecentlyAssigned;
               const isPending = pendingAssignment?.planId === plan.id;
+              const pendingPersonnel = isPending
+                ? pendingAssignment?.personIds
+                    .map((id) => personnelById.get(id))
+                    .filter((person): person is Personnel => Boolean(person))
+                : [];
+              const pendingSuccessInfo =
+                isPending && pendingPersonnel.length > 0
+                  ? getMissionSuccessChance(plan, pendingPersonnel)
+                  : null;
+              const baseSuccessPercent = Math.round(plan.baseSuccessChance * 100);
+              const pendingSuccessPercent = pendingSuccessInfo
+                ? Math.round(pendingSuccessInfo.chance * 100)
+                : null;
               const canAssign =
                 !isDisabled && dragPerson && dragPlanId === plan.id
                   ? validateAssignment(
@@ -1699,22 +1713,125 @@ export const LocationApp = () => {
                 <div className="meta">{plan.summary}</div>
                 <div className="meta">
                   {getPlanHoursLeftLabel(plan)} · {plan.durationHours}h · Success{" "}
-                  {Math.round(plan.baseSuccessChance * 100)}%
+                  {baseSuccessPercent}%
+                  {pendingSuccessPercent !== null &&
+                  pendingSuccessPercent !== baseSuccessPercent
+                    ? ` → ${pendingSuccessPercent}%`
+                    : ""}
                 </div>
                 {isGlobalCooldown ? (
                   <div className="meta">
                     Cooldown: {Math.ceil(activeMission?.remainingHours ?? 0)}h left
                   </div>
                 ) : null}
+                {pendingSuccessInfo ? (
+                  <>
+                    <div className="meta">
+                      Traits:{" "}
+                      <span
+                        className={`success-modifier${
+                          pendingSuccessInfo.traitModifier.bonus
+                            ? " is-positive"
+                            : " is-neutral"
+                        }`}
+                      >
+                        +{Math.round(pendingSuccessInfo.traitModifier.bonus * 100)}%
+                      </span>
+                      {pendingSuccessInfo.traitModifier.bonuses.length
+                        ? ` (${pendingSuccessInfo.traitModifier.bonuses.join(", ")})`
+                        : ""}
+                      {" · "}
+                      <span
+                        className={`success-modifier${
+                          pendingSuccessInfo.traitModifier.penalty
+                            ? " is-negative"
+                            : " is-neutral"
+                        }`}
+                      >
+                        -{Math.round(pendingSuccessInfo.traitModifier.penalty * 100)}%
+                      </span>
+                      {pendingSuccessInfo.traitModifier.penalties.length
+                        ? ` (${pendingSuccessInfo.traitModifier.penalties.join(", ")})`
+                        : ""}
+                    </div>
+                    <div className="meta">
+                      Roles:{" "}
+                      <span
+                        className={`success-modifier${
+                          pendingSuccessInfo.roleModifier.bonus
+                            ? " is-positive"
+                            : " is-neutral"
+                        }`}
+                      >
+                        +{Math.round(pendingSuccessInfo.roleModifier.bonus * 100)}%
+                      </span>
+                      {pendingSuccessInfo.roleModifier.bonuses.length
+                        ? ` (${pendingSuccessInfo.roleModifier.bonuses.join(", ")})`
+                        : ""}
+                      {" · "}
+                      <span
+                        className={`success-modifier${
+                          pendingSuccessInfo.roleModifier.penalty
+                            ? " is-negative"
+                            : " is-neutral"
+                        }`}
+                      >
+                        -{Math.round(pendingSuccessInfo.roleModifier.penalty * 100)}%
+                      </span>
+                      {pendingSuccessInfo.roleModifier.penalties.length
+                        ? ` (${pendingSuccessInfo.roleModifier.penalties.join(", ")})`
+                        : ""}
+                    </div>
+                  </>
+                ) : null}
                 {isPending ? (
                   <div className="mission-confirm">
-                    <span className="meta">
-                      Assign{" "}
-                      {pendingAssignment?.personIds
-                        .map((id) => personnelById.get(id)?.name ?? id)
-                        .join(", ")}
-                      ?
-                    </span>
+                    <div className="meta">
+                      Assign:
+                      <div className="mission-confirm-people">
+                        {pendingAssignment?.personIds.map((id) => {
+                          const person = personnelById.get(id);
+                          const label = person?.name ?? id;
+                          return (
+                            <div key={id} className="mission-confirm-pill">
+                              <button
+                                type="button"
+                                className="mission-confirm-pill-button"
+                                onClick={() => {
+                                  setSelectedPersonnelIds([id]);
+                                  triggerPersonnelFlash(id);
+                                }}
+                              >
+                                {label}
+                              </button>
+                              <button
+                                type="button"
+                                className="mission-confirm-remove"
+                                aria-label={`Remove ${label}`}
+                                onClick={() => {
+                                  setPendingAssignment((prev) => {
+                                    if (!prev) {
+                                      return prev;
+                                    }
+                                    const nextIds = prev.personIds.filter(
+                                      (personId) => personId !== id,
+                                    );
+                                    if (nextIds.length === 0) {
+                                      setSelectedPersonnelIds([]);
+                                      return null;
+                                    }
+                                    setSelectedPersonnelIds(nextIds);
+                                    return { ...prev, personIds: nextIds };
+                                  });
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="mission-confirm-actions">
                       <button
                         type="button"
@@ -1779,7 +1896,7 @@ export const LocationApp = () => {
               ) : null}
               <div className="meta assignment-details-section">Requirements</div>
               <div className="meta assignment-details-item">
-                Skills: {detailPlan.requiredSkills.join(", ")}
+                Roles: {detailPlan.requiredRoles.join(", ")}
               </div>
               {detailPlan.requiredMaterials?.length ? (
                 <div className="meta assignment-details-item">
@@ -1875,7 +1992,7 @@ export const LocationApp = () => {
             >
               {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
-                  {person.name} · {person.skills.join(", ")} ·{" "}
+                  {person.name} · {person.roles.join(", ")} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {getLocationLabel(person.locationId)}
                 </option>

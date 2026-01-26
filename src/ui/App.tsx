@@ -552,7 +552,7 @@ export const App = () => {
           <ul>
             {runtime.personnel.map((person) => (
               <li key={person.id}>
-                <strong>{person.name}</strong> · {person.skills.join(", ")} ·{" "}
+                <strong>{person.name}</strong> · {person.roles.join(", ")} ·{" "}
                 {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                 {person.locationId}
               </li>
@@ -578,14 +578,14 @@ export const App = () => {
                   value={person.id}
                   style={getPersonnelOptionStyle(person)}
                 >
-                  {person.name} · {person.skills.join(", ")} · {person.locationId}
+                  {person.name} · {person.roles.join(", ")} · {person.locationId}
                 </option>
               ))}
             </select>
           </label>
           {selectedPersonnel ? (
             <div className="meta">
-              {selectedPersonnel.name} · {selectedPersonnel.skills.join(", ")} ·{" "}
+              {selectedPersonnel.name} · {selectedPersonnel.roles.join(", ")} ·{" "}
               {selectedPersonnel.traits?.join(", ") ?? "no traits"} ·{" "}
               {selectedPersonnel.status} · {selectedPersonnel.locationId}
             </div>
@@ -601,7 +601,7 @@ export const App = () => {
             >
               {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
-                  {person.name} · {person.skills.join(", ")} ·{" "}
+                  {person.name} · {person.roles.join(", ")} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {person.locationId}
                 </option>
@@ -706,7 +706,7 @@ export const App = () => {
                 </div>
               ) : null}
               <div className="meta">
-                Skills: {selectedPlan.requiredSkills.join(", ")}
+                Roles: {selectedPlan.requiredRoles.join(", ")}
               </div>
               {selectedPlan.requiredMaterials &&
               selectedPlan.requiredMaterials.length > 0 ? (

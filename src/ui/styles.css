@@ -475,6 +475,57 @@ ul {
   margin-top: 6px;
 }
 
+.mission-confirm-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mission-confirm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  padding: 2px 4px;
+}
+
+.mission-confirm-pill:hover {
+  border-color: #94a3b8;
+}
+
+.mission-confirm-pill-button {
+  background: transparent;
+  border: none;
+  color: #e6edf3;
+  padding: 0 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.mission-confirm-pill-button:hover {
+  background: transparent;
+  color: #e6edf3;
+}
+
+.mission-confirm-remove {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 0 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.mission-confirm-remove:hover {
+  border-color: #94a3b8;
+  background: transparent;
+  color: #e6edf3;
+}
+
 .mission-confirm-actions {
   display: flex;
   gap: 6px;
@@ -511,6 +562,22 @@ ul {
 
 .requirement-unmet {
   color: #f87171;
+}
+
+.success-modifier {
+  font-weight: 600;
+}
+
+.success-modifier.is-positive {
+  color: #22c55e;
+}
+
+.success-modifier.is-negative {
+  color: #f87171;
+}
+
+.success-modifier.is-neutral {
+  color: #9da7b3;
 }
 
 .confirm-button,
