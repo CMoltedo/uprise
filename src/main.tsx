@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { useEffect, useState } from "react";
-import { LocationApp } from "./ui/LocationApp.js";
+import { App } from "./ui/App.js";
 import { AdminApp } from "./ui/AdminApp.js";
 import "./ui/styles.css";
 
@@ -17,7 +17,7 @@ const Root = () => {
     return () => window.removeEventListener("hashchange", handler);
   }, []);
 
-  return route === "admin" ? <AdminApp /> : <LocationApp />;
+  return route === "admin" ? <AdminApp /> : <App />;
 };
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
