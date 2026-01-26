@@ -57,12 +57,16 @@
         "durationHours": 22,
         "baseSuccessChance": 0.55,
         "rewards": {
-          "credits": 150,
-          "intel": 3
+          "currency": {
+            "credits": 150,
+            "intel": 3
+          }
         },
         "penalties": {
-          "credits": -120,
-          "intel": 0
+          "currency": {
+            "credits": -120,
+            "intel": 0
+          }
         }
       }
     ],

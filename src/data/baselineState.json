@@ -1,220 +1,7 @@
 {
   "data": {
     "materialCatalog": [],
-    "materialRewardTables": [
-      {
-        "id": "contraband-cache",
-        "name": "Contraband Cache",
-        "entries": [
-          { "materialId": "blaster-parts", "quantity": 2, "baseChance": 0.6 },
-          { "materialId": "ship-fuel", "quantity": 1, "baseChance": 0.4 }
-        ]
-      },
-      {
-        "id": "medical-stash",
-        "name": "Medical Stash",
-        "entries": [
-          { "materialId": "med-kits", "quantity": 2, "baseChance": 0.7 }
-        ]
-      },
-      {
-        "id": "industrial-find",
-        "name": "Industrial Find",
-        "entries": [
-          { "materialId": "blaster-parts", "quantity": 3, "baseChance": 0.5 },
-          { "materialId": "ship-fuel", "quantity": 2, "baseChance": 0.35 }
-        ]
-      }
-    ],
-    "missionTypeConfigs": [
-      { "type": "logistics", "defaultMaterialRewardTableId": "contraband-cache" },
-      { "type": "gather-materials", "defaultMaterialRewardTableId": "industrial-find" }
-    ],
-    "sectors": [],
-    "planets": [],
-    "locations": [],
-    "missionPlans": [
-      {
-        "id": "smuggle-supplies",
-        "name": "Smuggle Supplies",
-        "summary": "Move contraband to keep the network supplied.",
-        "type": "logistics",
-        "requiredRoles": ["agent", "pilot"],
-        "requiredMaterials": [
-          { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
-        ],
-        "durationHours": 24,
-        "baseSuccessChance": 0.7,
-        "rewards": {
-          "credits": 400,
-          "intel": 1
-        },
-        "penalties": {
-          "credits": -100,
-          "intel": 0
-        }
-      },
-      {
-        "id": "raise-credits",
-        "name": "Raise Credits",
-        "summary": "Leverage contacts for funding and influence.",
-        "type": "logistics",
-        "requiredRoles": ["diplomat"],
-        "requiredMaterials": [
-          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
-        ],
-        "durationHours": 12,
-        "baseSuccessChance": 0.6,
-        "rewards": {
-          "credits": 600,
-          "intel": 1
-        },
-        "penalties": {
-          "credits": -150,
-          "intel": 0
-        }
-      },
-      {
-        "id": "search-allies",
-        "name": "Search for Allies",
-        "summary": "Scout the Rim for sympathetic recruits.",
-        "type": "logistics",
-        "requiredRoles": ["agent", "operative"],
-        "requiredMaterials": [
-          { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
-        ],
-        "durationHours": 16,
-        "baseSuccessChance": 0.7,
-        "rewards": {
-          "credits": 200,
-          "intel": 2
-        },
-        "penalties": {
-          "credits": -60,
-          "intel": 0
-        }
-      },
-      {
-        "id": "gather-materials",
-        "name": "Gather Materials",
-        "summary": "Secure raw goods and spare parts.",
-        "type": "gather-materials",
-        "requiredRoles": ["agent"],
-        "requiredMaterials": [
-          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
-        ],
-        "durationHours": 18,
-        "baseSuccessChance": 0.75,
-        "rewards": {
-          "credits": 200,
-          "intel": 1
-        },
-        "penalties": {
-          "credits": -50,
-          "intel": 0
-        }
-      },
-      {
-        "id": "galaxy-wide-aid",
-        "name": "Galaxy-wide Aid",
-        "summary": "Coordinate relief and gain goodwill across sectors.",
-        "type": "logistics",
-        "availability": { "type": "global" },
-        "requiredRoles": ["diplomat", "operative"],
-        "requiredMaterials": [
-          { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
-        ],
-        "durationHours": 20,
-        "baseSuccessChance": 0.65,
-        "rewards": {
-          "credits": 300,
-          "intel": 2
-        },
-        "penalties": {
-          "credits": -80,
-          "intel": 0
-        }
-      },
-      {
-        "id": "fleet-refuel",
-        "name": "Fleet Refuel",
-        "summary": "Stockpile fuel to keep the fleet mobile.",
-        "type": "logistics",
-        "availability": { "type": "global" },
-        "requiredRoles": ["agent"],
-        "requiredMaterials": [
-          { "materialId": "ship-fuel", "quantity": 50, "consumeChance": 1 }
-        ],
-        "durationHours": 28,
-        "baseSuccessChance": 0.55,
-        "rewards": {
-          "credits": 700,
-          "intel": 2
-        },
-        "penalties": {
-          "credits": -200,
-          "intel": 0
-        }
-      },
-      {
-        "id": "recruit-allies",
-        "name": "Recruit Allies",
-        "summary": "Build trust and bring a new ally into the cause.",
-        "type": "recruit-allies",
-        "availability": { "type": "global" },
-        "requiredRoles": ["diplomat"],
-        "durationHours": 18,
-        "baseSuccessChance": 0.6,
-        "rewards": {
-          "intel": 1
-        },
-        "penalties": {
-          "credits": -50,
-          "intel": 0
-        }
-      }
-    ],
-    "locationAssignments": [
-      {
-        "id": "assign-tatooine-smuggle",
-        "locationId": "tatooine-mos-eisley",
-        "planId": "smuggle-supplies",
-        "appearanceChance": 0.05,
-        "windowHours": 20
-      },
-      {
-        "id": "assign-tatooine-allies",
-        "locationId": "tatooine-mos-espa",
-        "planId": "search-allies",
-        "appearanceChance": 0.05,
-        "windowHours": 24
-      },
-      {
-        "id": "assign-coruscant-credits",
-        "locationId": "coruscant-senate",
-        "planId": "raise-credits",
-        "appearanceChance": 0.05,
-        "windowHours": 18
-      },
-      {
-        "id": "assign-sullust-materials",
-        "locationId": "sullust-capital",
-        "planId": "gather-materials",
-        "appearanceChance": 0.05,
-        "windowHours": 22
-      }
-    ]
-  },
-  "runtime": {
-    "faction": "rebels",
-    "nowHours": 0,
-    "headquartersId": "tatooine-mos-eisley",
-    "resources": {
-      "credits": 1200,
-      "materials": 300,
-      "intel": 5
-    },
-    "personnel": [
+    "heroes": [
       {
         "id": "personnel-001",
         "name": "Rowan Hale",
@@ -264,6 +51,21 @@
         "locationId": "corellia-shipyards"
       }
     ],
+    "sectors": [],
+    "planets": [],
+    "locations": [],
+    "missionPlans": [],
+    "locationAssignments": []
+  },
+  "runtime": {
+    "faction": "rebels",
+    "nowHours": 0,
+    "headquartersId": "tatooine-mos-eisley",
+    "resources": {
+      "credits": 2552,
+      "intel": 5
+    },
+    "personnel": [],
     "materials": [
       { "id": "blaster-parts", "name": "Blaster Parts", "quantity": 8 },
       { "id": "med-kits", "name": "Med Kits", "quantity": 5 },

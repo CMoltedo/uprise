@@ -3,7 +3,6 @@ import {
   advanceTime,
   assignPersonnelToMission,
   assignTravel,
-  getMaterialRewardModifier,
   getMissionSuccessChance,
   refreshMissionOffers,
   validateAssignment,
@@ -18,6 +17,9 @@ import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
 
 const formatResources = (runtime: GameRuntime) =>
   `Cr ${runtime.resources.credits} · Intel ${runtime.resources.intel}`;
+
+const buildIdMap = <T extends { id: string }>(items: T[]) =>
+  new Map(items.map((item) => [item.id, item]));
 
 export const LocationApp = () => {
   const ADMIN_CURRENT_APPLY_KEY = "uprise-admin-current-apply";
@@ -47,10 +49,13 @@ export const LocationApp = () => {
   const [state, setState] = useState<GameState>(() => initialScenario);
   const data = state.data;
   const runtime = state.runtime;
-  const [speedIndex, setSpeedIndex] = useState<number>(2);
+  const [speedIndex, setSpeedIndex] = useState<number>(0);
+  const [isPaused, setIsPaused] = useState<boolean>(true);
+  const [mapMode, setMapMode] = useState<"map" | "locations">("map");
   const [mapLevel, setMapLevel] = useState<"galaxy" | "sector" | "planet">(
     "galaxy",
   );
+
   const [selectedSectorId, setSelectedSectorId] = useState<string>(
     initialScenario.data.sectors[0]?.id ?? "",
   );
@@ -63,6 +68,8 @@ export const LocationApp = () => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     initialScenario.data.missionPlans[0]?.id ?? "",
   );
+  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
+
   const [travelPersonnelId, setTravelPersonnelId] = useState<string>(
     initialScenario.runtime.personnel[0]?.id ?? "",
   );
@@ -70,59 +77,38 @@ export const LocationApp = () => {
     initialScenario.data.locations[0]?.id ?? "",
   );
   const [travelHours, setTravelHours] = useState<number>(12);
+
   const [dragPlanId, setDragPlanId] = useState<string | null>(null);
   const [hoverPlanId, setHoverPlanId] = useState<string | null>(null);
   const [dragPersonnelId, setDragPersonnelId] = useState<string | null>(null);
   const [mapDropLocationId, setMapDropLocationId] = useState<string | null>(null);
-  const [showConsoleMenu, setShowConsoleMenu] = useState<boolean>(false);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [flashPlanId, setFlashPlanId] = useState<string | null>(null);
-  const [flashPersonnelId, setFlashPersonnelId] = useState<string | null>(null);
-  const [recentlyAssignedPlans, setRecentlyAssignedPlans] = useState<
-    Array<{ planId: string; expiresAt: number }>
-  >([]);
   const [pendingAssignment, setPendingAssignment] = useState<{
     planId: string;
     personIds: string[];
     locationId: string;
   } | null>(null);
-  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
+  const [recentlyAssignedPlans, setRecentlyAssignedPlans] = useState<
+    Array<{ planId: string; expiresAt: number }>
+  >([]);
+
+  const [showConsoleMenu, setShowConsoleMenu] = useState<boolean>(false);
   const [saveMenuMode, setSaveMenuMode] = useState<"save" | "load" | null>(null);
   const [saveSlotsVersion, setSaveSlotsVersion] = useState(0);
-  const [mapMode, setMapMode] = useState<"map" | "locations">("map");
+
+  const [flashPlanId, setFlashPlanId] = useState<string | null>(null);
+  const [flashPersonnelId, setFlashPersonnelId] = useState<string | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const consolePanelRef = useRef<HTMLDivElement | null>(null);
   const flashPlanTimeoutRef = useRef<number | null>(null);
   const flashPersonnelTimeoutRef = useRef<number | null>(null);
 
-  const locationById = useMemo(
-    () => new Map(data.locations.map((location) => [location.id, location])),
-    [data.locations],
-  );
-  const sectorById = useMemo(
-    () => new Map(data.sectors.map((sector) => [sector.id, sector])),
-    [data.sectors],
-  );
-  const planetById = useMemo(
-    () => new Map(data.planets.map((planet) => [planet.id, planet])),
-    [data.planets],
-  );
-  const planById = useMemo(
-    () => new Map(data.missionPlans.map((plan) => [plan.id, plan])),
-    [data.missionPlans],
-  );
+  const locationById = useMemo(() => buildIdMap(data.locations), [data.locations]);
+  const sectorById = useMemo(() => buildIdMap(data.sectors), [data.sectors]);
+  const planetById = useMemo(() => buildIdMap(data.planets), [data.planets]);
+  const planById = useMemo(() => buildIdMap(data.missionPlans), [data.missionPlans]);
   const personnelById = useMemo(
-    () => new Map(runtime.personnel.map((person) => [person.id, person])),
+    () => buildIdMap(runtime.personnel),
     [runtime.personnel],
-  );
-  const materialRewardTableById = useMemo(
-    () =>
-      new Map(data.materialRewardTables.map((table) => [table.id, table])),
-    [data.materialRewardTables],
-  );
-  const missionTypeConfigByType = useMemo(
-    () => new Map(data.missionTypeConfigs.map((config) => [config.type, config])),
-    [data.missionTypeConfigs],
   );
 
   const selectedLocation = useMemo(
@@ -365,14 +351,8 @@ export const LocationApp = () => {
     [runtime.materials],
   );
 
-  const rewardModifier = useMemo(
-    () =>
-      selectedLocation ? getMaterialRewardModifier(state, selectedLocation.id) : null,
-    [selectedLocation, state],
-  );
-
   const timeAccumulatorRef = useRef(
-    createHourAccumulator(SPEEDS[2], initialScenario.runtime.nowHours),
+    createHourAccumulator(SPEEDS[0], initialScenario.runtime.nowHours),
   );
   const [toasts, setToasts] = useState<
     Array<{
@@ -1923,34 +1903,51 @@ export const LocationApp = () => {
                 <div className="meta assignment-details-item">Materials: none</div>
               )}
               <div className="meta assignment-details-section">Rewards</div>
-              {detailPlan.materialRewardTableId ||
-              missionTypeConfigByType.get(detailPlan.type)
-                ?.defaultMaterialRewardTableId ? (
+              {detailPlan.rewards?.currency ? (
+                <div className="meta assignment-details-item">
+                  Currency:
+                  <div className="assignment-details-sublist">
+                    {[
+                      ["credits", detailPlan.rewards.currency.credits],
+                      ["intel", detailPlan.rewards.currency.intel],
+                    ]
+                      .filter(([, value]) => value !== undefined)
+                      .map(([label, value]) => (
+                        <div key={label} className="meta assignment-details-subitem">
+                          {label}: {value}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="meta assignment-details-item">Currency: none</div>
+              )}
+              {detailPlan.rewards?.items?.length ? (
                 <div className="meta assignment-details-item">
                   Materials:
                   <div className="assignment-details-sublist">
-                    {materialRewardTableById
-                      .get(
-                        detailPlan.materialRewardTableId ??
-                          missionTypeConfigByType.get(detailPlan.type)
-                            ?.defaultMaterialRewardTableId ??
-                          "",
-                      )
-                      ?.entries.map((entry) => {
-                        const chance = rewardModifier
-                          ? Math.round(entry.baseChance * rewardModifier * 100)
-                          : Math.round(entry.baseChance * 100);
-                        return (
-                          <div key={entry.materialId} className="meta assignment-details-subitem">
-                            {entry.quantity}x {entry.materialId} ({chance}%)
-                          </div>
-                        );
-                      }) || <div className="meta assignment-details-subitem">none</div>}
+                    {detailPlan.rewards.items.map((entry) => (
+                      <div key={entry.materialId} className="meta assignment-details-subitem">
+                        {entry.quantity}x {entry.materialId}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
                 <div className="meta assignment-details-item">Materials: none</div>
               )}
+              {detailPlan.rewards?.effects?.length ? (
+                <div className="meta assignment-details-item">
+                  Other:
+                  <div className="assignment-details-sublist">
+                    {detailPlan.rewards.effects.map((effect, index) => (
+                      <div key={`${effect.type}-${index}`} className="meta assignment-details-subitem">
+                        {effect.type}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             );
           })() : (

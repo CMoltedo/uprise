@@ -65,22 +65,26 @@ export interface MaterialCatalogItem {
   tags?: string[];
 }
 
-export interface MaterialRewardEntry {
-  materialId: string;
-  quantity: number;
-  baseChance: number;
-}
-
-export interface MaterialRewardTable {
-  id: string;
-  name: string;
-  entries: MaterialRewardEntry[];
-}
-
 export interface MissionMaterialRequirement {
   materialId: string;
   quantity: number;
   consumeChance: number;
+}
+
+export interface MissionRewardItem {
+  materialId: string;
+  quantity: number;
+}
+
+export interface MissionRewardEffect {
+  type: string;
+  data?: Record<string, unknown>;
+}
+
+export interface MissionRewardBundle {
+  currency?: Partial<ResourceBundle>;
+  items?: MissionRewardItem[];
+  effects?: MissionRewardEffect[];
 }
 
 export type MissionAvailability =
@@ -95,11 +99,10 @@ export interface MissionPlan {
   availability?: MissionAvailability;
   requiredRoles: PersonnelRole[];
   requiredMaterials?: MissionMaterialRequirement[];
-  materialRewardTableId?: string;
   durationHours: number;
   baseSuccessChance: number;
-  rewards: Partial<ResourceBundle>;
-  penalties?: Partial<ResourceBundle>;
+  rewards?: MissionRewardBundle;
+  penalties?: MissionRewardBundle;
 }
 
 export interface MissionInstance {
@@ -110,11 +113,6 @@ export interface MissionInstance {
   status: MissionStatus;
   remainingHours: number;
   startedAtHours: number;
-}
-
-export interface MissionTypeConfig {
-  type: MissionType;
-  defaultMaterialRewardTableId?: string;
 }
 
 export interface LocationAssignment {
@@ -144,7 +142,7 @@ export interface MissionEvent {
   resolvedAtHours: number;
   success: boolean;
   personnelIds: string[];
-  rewardsApplied: Partial<ResourceBundle>;
+  rewardsApplied: MissionRewardBundle;
   locationId: string;
 }
 
@@ -172,14 +170,12 @@ export interface TravelAssignment {
 
 export interface ResourceBundle {
   credits: number;
-  materials: number;
   intel: number;
 }
 
 export interface GameData {
   materialCatalog: MaterialCatalogItem[];
-  materialRewardTables: MaterialRewardTable[];
-  missionTypeConfigs: MissionTypeConfig[];
+  heroes: Personnel[];
   sectors: Sector[];
   planets: Planet[];
   locations: Location[];

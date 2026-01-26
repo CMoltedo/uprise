@@ -2,8 +2,6 @@ import type {
   GameState,
   MaterialCatalogItem,
   MaterialItem,
-  MaterialRewardTable,
-  MissionTypeConfig,
   MissionEvent,
   TravelEvent,
   MissionOffer,
@@ -15,16 +13,12 @@ import type {
   PersonnelRole,
   PersonnelStatus,
   ResourceBundle,
+  MissionRewardBundle,
+  MissionRewardItem,
   TravelAssignment,
 } from "./models.js";
 import { generatePersonnel } from "./generators.js";
 import balance from "./data/balance.json";
-
-const DEFAULT_RESOURCES: ResourceBundle = {
-  credits: 0,
-  materials: 0,
-  intel: 0,
-};
 
 const clampChance = (chance: number) => Math.max(0, Math.min(1, chance));
 
@@ -57,36 +51,38 @@ const getModifierSummary = (
   };
 };
 
+const getPersonnelTraits = (personnel: Personnel[]) =>
+  personnel.flatMap((person) => person.traits ?? []);
+
+const getPersonnelRoles = (personnel: Personnel[]) =>
+  personnel.flatMap((person) => person.roles);
+
 export const getTraitSuccessModifier = (personnel: Personnel[]) => {
   const traitModifiers = balance.traitSuccessModifiers as
     | Record<string, number>
     | undefined;
-  const traits = personnel.flatMap((person) => person.traits ?? []);
-  return getModifierSummary(traits, traitModifiers);
+  return getModifierSummary(getPersonnelTraits(personnel), traitModifiers);
 };
 
 export const getRoleSuccessModifier = (personnel: Personnel[]) => {
   const roleModifiers = balance.roleSuccessModifiers as
     | Record<string, number>
     | undefined;
-  const roles = personnel.flatMap((person) => person.roles);
-  return getModifierSummary(roles, roleModifiers);
+  return getModifierSummary(getPersonnelRoles(personnel), roleModifiers);
 };
 
 export const getMissionRewardModifier = (personnel: Personnel[]) => {
   const rewardModifiers = balance.roleRewardModifiers as
     | Record<string, number>
     | undefined;
-  const roles = personnel.flatMap((person) => person.roles);
-  return getModifierSummary(roles, rewardModifiers);
+  return getModifierSummary(getPersonnelRoles(personnel), rewardModifiers);
 };
 
 export const getMissionConsumeModifier = (personnel: Personnel[]) => {
   const consumeModifiers = balance.roleConsumeModifiers as
     | Record<string, number>
     | undefined;
-  const roles = personnel.flatMap((person) => person.roles);
-  return getModifierSummary(roles, consumeModifiers);
+  return getModifierSummary(getPersonnelRoles(personnel), consumeModifiers);
 };
 
 export const getMissionSuccessChance = (
@@ -116,7 +112,6 @@ const mergeResources = (
   }
   return {
     credits: base.credits + (delta.credits ?? 0),
-    materials: base.materials + (delta.materials ?? 0),
     intel: base.intel + (delta.intel ?? 0),
   };
 };
@@ -134,10 +129,6 @@ const applyRewardModifier = (
       rewards.credits !== undefined
         ? Math.round(rewards.credits * multiplier)
         : undefined,
-    materials:
-      rewards.materials !== undefined
-        ? Math.round(rewards.materials * multiplier)
-        : undefined,
     intel:
       rewards.intel !== undefined
         ? Math.round(rewards.intel * multiplier)
@@ -154,36 +145,11 @@ export const getMissionPlan = (state: GameState, planId: string) =>
 export const getPersonnel = (state: GameState, personnelId: string) =>
   state.runtime.personnel.find((person) => person.id === personnelId);
 
-export const getMaterialRewardTable = (
-  state: GameState,
-  tableId?: string,
-): MaterialRewardTable | undefined =>
-  tableId
-    ? state.data.materialRewardTables.find((table) => table.id === tableId)
-    : undefined;
-
-export const getMissionTypeConfig = (
-  state: GameState,
-  missionType: MissionPlan["type"],
-): MissionTypeConfig | undefined =>
-  state.data.missionTypeConfigs.find((config) => config.type === missionType);
-
 export const getMaterialCatalogItem = (
   state: GameState,
   materialId: string,
 ): MaterialCatalogItem | undefined =>
   state.data.materialCatalog.find((item) => item.id === materialId);
-
-const getMaterialRewardTableForPlan = (
-  state: GameState,
-  plan: MissionPlan,
-): MaterialRewardTable | undefined => {
-  if (plan.materialRewardTableId) {
-    return getMaterialRewardTable(state, plan.materialRewardTableId);
-  }
-  const typeConfig = getMissionTypeConfig(state, plan.type);
-  return getMaterialRewardTable(state, typeConfig?.defaultMaterialRewardTableId);
-};
 
 const hasMaterials = (
   state: GameState,
@@ -238,56 +204,85 @@ const consumeMaterials = (
   });
 };
 
-export const getMaterialRewardModifier = (
+const applyRewardItems = (
   state: GameState,
-  locationId: string,
-): number => {
-  const location = getLocation(state, locationId);
-  if (!location) {
-    return 1;
+  items: MissionRewardItem[] | undefined,
+  rewardModifier: number,
+  direction: 1 | -1,
+): MaterialItem[] => {
+  if (!items || items.length === 0) {
+    return state.runtime.materials;
   }
-  const { resistance, customsScrutiny, garrisonStrength, techLevel } =
-    location.attributes;
-  const pressure = (customsScrutiny + garrisonStrength) / 2;
-  const base = 1 + (resistance - pressure) / 200 + techLevel / 500;
-  return Math.max(0.5, Math.min(1.5, base));
-};
-
-const applyMaterialRewards = (
-  state: GameState,
-  plan: MissionPlan,
-  locationId: string,
-  rewardModifier = 0,
-): GameState => {
-  const table = getMaterialRewardTableForPlan(state, plan);
-  if (!table || table.entries.length === 0) {
-    return state;
-  }
-  const modifier = getMaterialRewardModifier(state, locationId);
-  let nextMaterials = [...state.runtime.materials];
-  for (const entry of table.entries) {
-    const chance = clampChance(entry.baseChance * modifier + rewardModifier);
-    if (Math.random() > chance) {
+  const multiplier = direction === 1 ? 1 + rewardModifier : 1;
+  const itemMap = new Map(
+    state.runtime.materials.map((item) => [item.id, { ...item }]),
+  );
+  for (const item of items) {
+    const baseQty = Math.round(item.quantity * multiplier);
+    const delta = direction * baseQty;
+    if (delta === 0) {
       continue;
     }
-    const existing = nextMaterials.find((item) => item.id === entry.materialId);
+    const existing = itemMap.get(item.materialId);
     if (existing) {
-      existing.quantity += entry.quantity;
-    } else {
-      const catalogItem = getMaterialCatalogItem(state, entry.materialId);
-      nextMaterials = [
-        ...nextMaterials,
-        {
-          id: entry.materialId,
-          name: catalogItem?.name ?? entry.materialId,
-          quantity: entry.quantity,
-        },
-      ];
+      existing.quantity = Math.max(0, existing.quantity + delta);
+      itemMap.set(item.materialId, existing);
+      continue;
     }
+    const catalogItem = getMaterialCatalogItem(state, item.materialId);
+    itemMap.set(item.materialId, {
+      id: item.materialId,
+      name: catalogItem?.name ?? item.materialId,
+      quantity: Math.max(0, delta),
+      tags: catalogItem?.tags,
+    });
   }
-  return nextMaterials === state.runtime.materials
-    ? state
-    : { ...state, runtime: { ...state.runtime, materials: nextMaterials } };
+  return Array.from(itemMap.values());
+};
+
+const applyRewardBundle = (
+  state: GameState,
+  bundle: MissionRewardBundle | undefined,
+  rewardModifier: number,
+  direction: 1 | -1,
+) => {
+  if (!bundle) {
+    return {
+      resources: state.runtime.resources,
+      materials: state.runtime.materials,
+      applied: {},
+    };
+  }
+  const currency = bundle.currency ?? {};
+  const appliedCurrency =
+    direction === 1 ? applyRewardModifier(currency, rewardModifier) : currency;
+  const nextResources = mergeResources(state.runtime.resources, appliedCurrency);
+  const nextMaterials = applyRewardItems(
+    state,
+    bundle.items,
+    rewardModifier,
+    direction,
+  );
+  const appliedItems =
+    bundle.items && bundle.items.length > 0
+      ? bundle.items.map((item) => ({
+          ...item,
+          quantity:
+            direction *
+            (direction === 1
+              ? Math.round(item.quantity * (1 + rewardModifier))
+              : item.quantity),
+        }))
+      : undefined;
+  return {
+    resources: nextResources,
+    materials: nextMaterials,
+    applied: {
+      currency: appliedCurrency,
+      items: appliedItems,
+      effects: bundle.effects,
+    },
+  };
 };
 
 const applyRecruitRewards = (
@@ -535,10 +530,15 @@ const resolveMission = (
   const roll = Math.random();
   const success = roll <= successChance;
 
-  const rewards = success
-    ? applyRewardModifier(plan.rewards, rewardModifier.total)
-    : plan.penalties ?? DEFAULT_RESOURCES;
-  const updatedResources = mergeResources(state.runtime.resources, rewards);
+  const rewardBundle = success ? plan.rewards : plan.penalties;
+  const rewardDirection: 1 | -1 = success ? 1 : -1;
+  const rewardMultiplier = success ? rewardModifier.total : 0;
+  const rewardResult = applyRewardBundle(
+    state,
+    rewardBundle,
+    rewardMultiplier,
+    rewardDirection,
+  );
 
   const injuryChance = balance.missionFailureInjuryChance ?? 0.05;
   const nextStatus: PersonnelStatus =
@@ -569,7 +569,7 @@ const resolveMission = (
     resolvedAtHours: state.runtime.nowHours,
     success,
     personnelIds: [...mission.assignedPersonnelIds],
-    rewardsApplied: rewards,
+    rewardsApplied: rewardResult.applied,
     locationId: mission.locationId,
   };
 
@@ -577,7 +577,8 @@ const resolveMission = (
     ...state,
     runtime: {
       ...state.runtime,
-      resources: updatedResources,
+      resources: rewardResult.resources,
+      materials: rewardResult.materials,
       personnel: updatedPersonnel,
       missions: state.runtime.missions.map((item) =>
         item.id === mission.id ? updatedMission : item,
@@ -585,17 +586,9 @@ const resolveMission = (
       eventLog: [...state.runtime.eventLog, event],
     },
   };
-  if (success) {
-    nextState = applyMaterialRewards(
-      nextState,
-      plan,
-      mission.locationId,
-      rewardModifier.total,
-    );
-    if (plan.type === "recruit-allies") {
-      const recruitCount = balance.recruitAlliesRewardCount ?? 1;
-      nextState = applyRecruitRewards(nextState, mission.locationId, recruitCount);
-    }
+  if (success && plan.type === "recruit-allies") {
+    const recruitCount = balance.recruitAlliesRewardCount ?? 1;
+    nextState = applyRecruitRewards(nextState, mission.locationId, recruitCount);
   }
   return nextState;
 };

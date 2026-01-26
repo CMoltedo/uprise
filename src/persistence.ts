@@ -30,7 +30,7 @@ const normalizeRuntime = (runtime: Partial<GameRuntime>): GameRuntime => ({
   faction: runtime.faction ?? "rebels",
   nowHours: runtime.nowHours ?? 0,
   headquartersId: runtime.headquartersId ?? "",
-  resources: runtime.resources ?? { credits: 0, materials: 0, intel: 0 },
+  resources: runtime.resources ?? { credits: 0, intel: 0 },
   personnel: runtime.personnel ?? [],
   materials: runtime.materials ?? [],
   missions: runtime.missions ?? [],

@@ -7,11 +7,9 @@ import type {
   LocationAssignment,
   MaterialCatalogItem,
   MaterialItem,
-  MaterialRewardTable,
   MissionOffer,
   MissionInstance,
   MissionPlan,
-  MissionTypeConfig,
   Planet,
   Personnel,
   ResourceBundle,
@@ -19,19 +17,18 @@ import type {
   TravelAssignment,
 } from "./models.js";
 import materialCatalogData from "./data/materialCatalog.json";
+import missionsData from "./data/missionsData.json";
 import worldData from "./data/worldData.json";
+import { generatePersonnel } from "./generators.js";
 
 type WithId = { id: string };
-type WithType = { type: string };
 
 type PartialWithId<T extends WithId> = Partial<T> & WithId;
-type PartialWithType<T extends WithType> = Partial<T> & WithType;
 
 export interface ScenarioOverrides {
   data?: {
     materialCatalog?: Array<PartialWithId<MaterialCatalogItem>>;
-    materialRewardTables?: Array<PartialWithId<MaterialRewardTable>>;
-    missionTypeConfigs?: Array<PartialWithType<MissionTypeConfig>>;
+    heroes?: Array<PartialWithId<Personnel>>;
     sectors?: Array<PartialWithId<Sector>>;
     planets?: Array<PartialWithId<Planet>>;
     locations?: Array<PartialWithId<Location>>;
@@ -72,26 +69,6 @@ const mergeById = <T extends WithId>(
   return Array.from(map.values());
 };
 
-const mergeByType = <T extends WithType>(
-  base: T[],
-  overrides: Array<PartialWithType<T>> | undefined,
-  mergeItem: (current: T, override: PartialWithType<T>) => T,
-): T[] => {
-  if (!overrides || overrides.length === 0) {
-    return base;
-  }
-  const map = new Map(base.map((item) => [item.type, item]));
-  for (const override of overrides) {
-    const existing = map.get(override.type);
-    if (existing) {
-      map.set(override.type, mergeItem(existing, override));
-    } else {
-      map.set(override.type, override as T);
-    }
-  }
-  return Array.from(map.values());
-};
-
 const mergeLocation = (
   current: Location,
   override: PartialWithId<Location>,
@@ -106,16 +83,83 @@ const mergeLocation = (
   },
 });
 
+const shuffle = <T,>(items: T[]) => {
+  const pool = [...items];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
+};
+
+const buildStartingPersonnel = (baseline: GameState): Personnel[] => {
+  const heroPool = baseline.data.heroes ?? [];
+  const heroCount = Math.min(
+    heroPool.length,
+    3 + Math.floor(Math.random() * 3),
+  );
+  const selectedHeroes = shuffle(heroPool)
+    .slice(0, heroCount)
+    .map((hero) => ({
+      ...hero,
+      status: "idle" as const,
+      locationId:
+        hero.locationId ??
+        baseline.runtime.headquartersId ??
+        baseline.data.locations[0]?.id ??
+        "",
+    }));
+  const randomCount = 4;
+  let workingState: GameState = {
+    ...baseline,
+    runtime: {
+      ...baseline.runtime,
+      personnel: selectedHeroes,
+    },
+  };
+  const randomPersonnel: Personnel[] = [];
+  for (let i = 0; i < randomCount; i += 1) {
+    const generated = generatePersonnel(workingState);
+    randomPersonnel.push(generated);
+    workingState = {
+      ...workingState,
+      runtime: {
+        ...workingState.runtime,
+        personnel: [...workingState.runtime.personnel, generated],
+      },
+    };
+  }
+  return [...selectedHeroes, ...randomPersonnel];
+};
+
+const loadStaticData = (): Pick<
+  GameData,
+  | "materialCatalog"
+  | "missionPlans"
+  | "locationAssignments"
+  | "sectors"
+  | "planets"
+  | "locations"
+> => ({
+  materialCatalog: materialCatalogData as MaterialCatalogItem[],
+  missionPlans: missionsData.missionPlans as MissionPlan[],
+  locationAssignments: missionsData.locationAssignments as LocationAssignment[],
+  sectors: worldData.sectors as Sector[],
+  planets: worldData.planets as Planet[],
+  locations: worldData.locations as Location[],
+});
+
 export const buildScenario = (
   baseline: GameState,
   overrides?: ScenarioOverrides,
 ): GameState => {
+  const startingPersonnel =
+    baseline.runtime.personnel.length > 0
+      ? baseline.runtime.personnel
+      : buildStartingPersonnel(baseline);
   const baseData: GameData = {
     ...baseline.data,
-    materialCatalog: materialCatalogData as MaterialCatalogItem[],
-    sectors: worldData.sectors as Sector[],
-    planets: worldData.planets as Planet[],
-    locations: worldData.locations as Location[],
+    ...loadStaticData(),
   };
   if (!overrides) {
     return {
@@ -132,14 +176,9 @@ export const buildScenario = (
         overrides.data?.materialCatalog,
         (current, override) => ({ ...current, ...override }),
       ),
-      materialRewardTables: mergeById(
-        baseData.materialRewardTables,
-        overrides.data?.materialRewardTables,
-        (current, override) => ({ ...current, ...override }),
-      ),
-      missionTypeConfigs: mergeByType(
-        baseData.missionTypeConfigs,
-        overrides.data?.missionTypeConfigs,
+      heroes: mergeById(
+        baseData.heroes,
+        overrides.data?.heroes,
         (current, override) => ({ ...current, ...override }),
       ),
       sectors: mergeById(
@@ -189,7 +228,7 @@ export const buildScenario = (
         ...overrides.runtime?.resources,
       },
       personnel: mergeById(
-        baseline.runtime.personnel,
+        startingPersonnel,
         overrides.runtime?.personnel,
         (current, override) => ({ ...current, ...override }),
       ),

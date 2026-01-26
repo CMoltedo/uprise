@@ -3,14 +3,12 @@ import {
   advanceTime,
   assignPersonnelToMission,
   assignTravel,
-  getMaterialRewardModifier,
   refreshMissionOffers,
   validateAssignment,
 } from "../engine.js";
 import type { GameRuntime, GameState, Personnel } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
-import sectorsData from "../data/sectors.json";
 import {
   SPEEDS,
   createHourAccumulator,
@@ -24,19 +22,6 @@ import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
 
 const formatResources = (runtime: GameRuntime) =>
   `Cr ${runtime.resources.credits} · Intel ${runtime.resources.intel}`;
-
-const parseSectorCoords = (coords: string) => {
-  const numbers = coords.split(",").map((value) => Number(value.trim()));
-  const points: Array<{ x: number; y: number }> = [];
-  for (let i = 0; i < numbers.length; i += 2) {
-    const x = numbers[i];
-    const y = numbers[i + 1];
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      points.push({ x, y });
-    }
-  }
-  return points;
-};
 
 export const App = () => {
   const initialScenario = (() => {
@@ -88,15 +73,6 @@ export const App = () => {
   const locationById = useMemo(
     () => new Map(data.locations.map((location) => [location.id, location])),
     [data.locations],
-  );
-  const materialRewardTableById = useMemo(
-    () =>
-      new Map(data.materialRewardTables.map((table) => [table.id, table])),
-    [data.materialRewardTables],
-  );
-  const missionTypeConfigByType = useMemo(
-    () => new Map(data.missionTypeConfigs.map((config) => [config.type, config])),
-    [data.missionTypeConfigs],
   );
   const selectedPersonnel = useMemo(() => {
     if (!selectedPersonnelId) {
@@ -197,13 +173,6 @@ export const App = () => {
         : null,
     [selectedPersonnelLocationId, data.locations],
   );
-  const rewardModifier = useMemo(
-    () =>
-      selectedLocation
-        ? getMaterialRewardModifier(state, selectedLocation.id)
-        : null,
-    [selectedLocation, state],
-  );
   const timeAccumulatorRef = useRef(
     createHourAccumulator(SPEEDS[2], initialScenario.runtime.nowHours),
   );
@@ -275,14 +244,14 @@ export const App = () => {
     };
   }, [selectedSector]);
 
-  const sectorPolygons = useMemo(() => {
-    return (sectorsData as Array<{ title: string; coords: string }>).map(
-      (sector) => ({
-        name: sector.title,
-        points: parseSectorCoords(sector.coords),
-      }),
-    );
-  }, []);
+  const sectorPolygons = useMemo(
+    () =>
+      data.sectors.map((sector) => ({
+        name: sector.name,
+        points: sector.polygon,
+      })),
+    [data.sectors],
+  );
 
   const galaxyBounds = useMemo(() => {
     if (sectorPolygons.length === 0) {
@@ -724,38 +693,34 @@ export const App = () => {
               ) : (
                 <div className="meta">Materials: none</div>
               )}
-              <div className="meta">
-                Rewards:{" "}
-                {[
-                  selectedPlan.rewards.credits
-                    ? `${selectedPlan.rewards.credits} credits`
-                    : null,
-                  selectedPlan.rewards.intel
-                    ? `${selectedPlan.rewards.intel} intel`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(", ") || "none"}
-              </div>
-              {selectedPlan.materialRewardTableId ||
-              missionTypeConfigByType.get(selectedPlan.type)
-                ?.defaultMaterialRewardTableId ? (
+              {selectedPlan.rewards?.currency ? (
+                <div className="meta">
+                  Currency:{" "}
+                  {[
+                    ["credits", selectedPlan.rewards.currency.credits],
+                    ["intel", selectedPlan.rewards.currency.intel],
+                  ]
+                    .filter(([, value]) => value !== undefined)
+                    .map(([label, value]) => `${label}: ${value}`)
+                    .join(", ") || "none"}
+                </div>
+              ) : (
+                <div className="meta">Currency: none</div>
+              )}
+              {selectedPlan.rewards?.items?.length ? (
                 <div className="meta">
                   Materials:{" "}
-                  {materialRewardTableById
-                    .get(
-                      selectedPlan.materialRewardTableId ??
-                        missionTypeConfigByType.get(selectedPlan.type)
-                          ?.defaultMaterialRewardTableId ??
-                        "",
-                    )
-                    ?.entries.map((entry) => {
-                      const chance = rewardModifier
-                        ? Math.round(entry.baseChance * rewardModifier * 100)
-                        : Math.round(entry.baseChance * 100);
-                      return `${entry.quantity}x ${entry.materialId} (${chance}%)`;
-                    })
-                    .join(", ") || "none"}
+                  {selectedPlan.rewards.items
+                    .map((entry) => `${entry.quantity}x ${entry.materialId}`)
+                    .join(", ")}
+                </div>
+              ) : (
+                <div className="meta">Materials: none</div>
+              )}
+              {selectedPlan.rewards?.effects?.length ? (
+                <div className="meta">
+                  Other:{" "}
+                  {selectedPlan.rewards.effects.map((effect) => effect.type).join(", ")}
                 </div>
               ) : null}
             </div>
