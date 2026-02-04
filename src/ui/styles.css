@@ -688,38 +688,65 @@ ul {
   margin-bottom: 8px;
 }
 
-.location-list button {
+.location-tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.location-tree-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.location-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.location-tree-toggle {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.location-tree-label {
   text-align: left;
   background: #0d1117;
   border: 1px solid #30363d;
   color: #e6edf3;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 8px;
+  cursor: pointer;
 }
 
-.location-list button.is-active {
+.location-tree-label.is-active {
   border-color: #22c55e;
 }
 
-.location-list {
+.location-tree-details {
+  margin-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.location-tree-children {
+  margin-left: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 380px;
-  overflow: auto;
-}
-
-.location-list button {
-  text-align: left;
-  background: #0d1117;
-  border: 1px solid #30363d;
-  color: #e6edf3;
-  padding: 6px 10px;
-  border-radius: 8px;
-}
-
-.location-list button.is-active {
-  border-color: #22c55e;
 }
 
 .map-grid {

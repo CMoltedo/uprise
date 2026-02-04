@@ -1,50 +1,35 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  advanceTime,
   assignPersonnelToMission,
   assignTravel,
   getMissionSuccessChance,
-  refreshMissionOffers,
   validateAssignment,
 } from "../engine.js";
 import type { GameRuntime, GameState, Personnel } from "../models.js";
-import baselineState from "../data/baselineState.json";
-import scenarioOverrides from "../data/scenarioOverrides.json";
-import { SPEEDS, createHourAccumulator, getHourOfDay, getUniverseDate } from "../time.js";
-import { buildScenario } from "../scenarios.js";
-import type { ScenarioOverrides } from "../scenarios.js";
-import { SAVE_KEY, parseSave, serializeSave } from "../persistence.js";
-
-const formatResources = (runtime: GameRuntime) =>
-  `Cr ${runtime.resources.credits} · Intel ${runtime.resources.intel}`;
-
-const buildIdMap = <T extends { id: string }>(items: T[]) =>
-  new Map(items.map((item) => [item.id, item]));
+import { SPEEDS, getHourOfDay, getUniverseDate } from "../time.js";
+import { serializeSave } from "../persistence.js";
+import { createInitialGameState } from "../game/bootstrap.js";
+import { useGameClock } from "../game/useGameClock.js";
+import {
+  buildIdMap,
+  formatResources,
+  getLocationLabel as buildLocationLabel,
+  getPersonnelOptionStyle as buildPersonnelOptionStyle,
+  getPersonnelStatusMeta as buildPersonnelStatusMeta,
+  getPlanHoursLeftLabel as buildPlanHoursLeftLabel,
+} from "../game/selectors.js";
+import {
+  SAVE_SLOTS,
+  loadSlot,
+  readSlotMeta,
+  saveSlot,
+} from "../game/saveSlots.js";
+import { HeaderSection } from "./components/HeaderSection.js";
+import { SaveSlotsModal } from "./components/SaveSlotsModal.js";
+import { ToastStack, type ToastMessage } from "./components/ToastStack.js";
 
 export const App = () => {
-  const ADMIN_CURRENT_APPLY_KEY = "uprise-admin-current-apply";
-  const readAdminAppliedRuntime = (): GameRuntime | null => {
-    const raw = localStorage.getItem(ADMIN_CURRENT_APPLY_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = parseSave(raw);
-    if (!parsed) {
-      localStorage.removeItem(ADMIN_CURRENT_APPLY_KEY);
-      return null;
-    }
-    localStorage.removeItem(ADMIN_CURRENT_APPLY_KEY);
-    return parsed;
-  };
-  const initialScenario = (() => {
-    const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
-    const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
-    const appliedRuntime = readAdminAppliedRuntime();
-    if (appliedRuntime) {
-      return refreshMissionOffers({ ...scenario, runtime: appliedRuntime });
-    }
-    return refreshMissionOffers(scenario);
-  })();
+  const initialScenario = createInitialGameState();
 
   const [state, setState] = useState<GameState>(() => initialScenario);
   const data = state.data;
@@ -52,6 +37,11 @@ export const App = () => {
   const [speedIndex, setSpeedIndex] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(true);
   const [mapMode, setMapMode] = useState<"map" | "locations">("map");
+  const [expandedLocationId, setExpandedLocationId] = useState<string | null>(
+    null,
+  );
+  const [expandedSectorIds, setExpandedSectorIds] = useState<string[]>([]);
+  const [expandedPlanetIds, setExpandedPlanetIds] = useState<string[]>([]);
   const [mapLevel, setMapLevel] = useState<"galaxy" | "sector" | "planet">(
     "galaxy",
   );
@@ -207,6 +197,13 @@ export const App = () => {
     }
     return map;
   }, [availableOffers, runtime.nowHours]);
+  const getLocationLabel = (locationId: string) =>
+    buildLocationLabel(locationId, locationById, planetById, sectorById);
+  const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) =>
+    buildPlanHoursLeftLabel(plan, offerHoursByPlanId, runtime.nowHours);
+  const getPersonnelStatusMeta = (person: Personnel) => buildPersonnelStatusMeta(person);
+  const getPersonnelOptionStyle = (person: Personnel) =>
+    buildPersonnelOptionStyle(person);
   const availablePlans = useMemo(() => {
     const plansFromOffers = availableOffers
       .map((offer) => data.missionPlans.find((plan) => plan.id === offer.planId))
@@ -351,19 +348,7 @@ export const App = () => {
     [runtime.materials],
   );
 
-  const timeAccumulatorRef = useRef(
-    createHourAccumulator(SPEEDS[0], initialScenario.runtime.nowHours),
-  );
-  const [toasts, setToasts] = useState<
-    Array<{
-      id: string;
-      parts: Array<
-        | { kind: "text"; value: string }
-        | { kind: "location"; value: string; locationId: string }
-        | { kind: "personnel"; value: string; personnelId: string }
-      >;
-    }>
-  >([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const lastEventIdRef = useRef<string | null>(null);
 
   const nowDate = getUniverseDate(runtime.nowHours);
@@ -475,37 +460,6 @@ export const App = () => {
     }
   };
 
-  const SAVE_SLOTS = [1, 2, 3] as const;
-  const getSlotKey = (slot: number) => `${SAVE_KEY}-slot-${slot}`;
-  const readSlotMeta = (slot: number) => {
-    const raw = localStorage.getItem(getSlotKey(slot));
-    if (!raw) {
-      return null;
-    }
-    try {
-      const data = JSON.parse(raw) as {
-        app?: string;
-        version?: number;
-        runtime?: { nowHours?: number };
-        state?: { runtime?: { nowHours?: number }; nowHours?: number };
-      };
-      if (data.app !== "uprise") {
-        return null;
-      }
-      const nowHours =
-        data.version === 2
-          ? data.runtime?.nowHours ?? 0
-          : data.state?.runtime?.nowHours ?? data.state?.nowHours ?? 0;
-      const date = getUniverseDate(nowHours);
-      const year = date.getUTCFullYear();
-      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(date.getUTCDate()).padStart(2, "0");
-      const hour = String(date.getUTCHours()).padStart(2, "0");
-      return { simStamp: `${year}-${month}-${day} ${hour}h` };
-    } catch {
-      return null;
-    }
-  };
   const slotMetas = useMemo(
     () =>
       SAVE_SLOTS.map((slot) => ({
@@ -525,32 +479,30 @@ export const App = () => {
     setTravelDestinationId(data.locations[0]?.id ?? "");
   };
   const handleSaveSlot = (slot: number) => {
-    const payload = serializeSave(runtime);
-    localStorage.setItem(getSlotKey(slot), payload);
+    saveSlot(slot, runtime);
     setSaveSlotsVersion((prev) => prev + 1);
     pushToast(`Saved to slot ${slot}.`);
     setSaveMenuMode(null);
   };
   const handleLoadSlot = (slot: number) => {
-    const raw = localStorage.getItem(getSlotKey(slot));
-    if (!raw) {
+    const result = loadSlot(slot);
+    if (result.status === "missing") {
       pushToast("No save found in that slot.");
       return;
     }
-    const loaded = parseSave(raw);
-    if (!loaded) {
+    if (result.status === "invalid") {
       pushToast("Save file is invalid.");
       return;
     }
-    applyLoadedRuntime(loaded);
+    if (result.status === "ok") {
+      applyLoadedRuntime(result.runtime);
+    }
     setSaveMenuMode(null);
     pushToast(`Loaded slot ${slot}.`);
   };
 
   const handleRestart = () => {
-    const baseline = JSON.parse(JSON.stringify(baselineState)) as GameState;
-    const scenario = buildScenario(baseline, scenarioOverrides as ScenarioOverrides);
-    const refreshed = refreshMissionOffers(scenario);
+    const refreshed = createInitialGameState();
     setState(refreshed);
     setPendingAssignment(null);
     setSelectedPersonnelIds([]);
@@ -692,54 +644,6 @@ export const App = () => {
       }
     };
 
-  const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) => {
-    const offerHours = offerHoursByPlanId.get(plan.id);
-    if (offerHours !== undefined) {
-      return `(${Math.ceil(offerHours)}h)`;
-    }
-    if (plan.availability?.type === "time") {
-      const hoursLeft = Math.max(0, plan.availability.endHours - runtime.nowHours);
-      return `(${Math.ceil(hoursLeft)}h)`;
-    }
-    if (plan.availability?.type === "global") {
-      return "(∞h)";
-    }
-    return "(?h)";
-  };
-
-  const getPersonnelOptionStyle = (person: Personnel) => {
-    const isUnavailable =
-      person.status === "wounded" ||
-      person.status === "assigned" ||
-      person.status === "traveling";
-    return isUnavailable ? { color: "#6b7280" } : undefined;
-  };
-
-  const getLocationLabel = (locationId: string) => {
-    if (locationId === "galaxy") {
-      return "Galaxy";
-    }
-    const location = locationById.get(locationId);
-    if (!location) {
-      return locationId;
-    }
-    const planet = planetById.get(location.planetId);
-    const sector = planet ? sectorById.get(planet.sectorId) : null;
-    return `${sector?.name ?? planet?.sectorId ?? "unknown sector"} · ${
-      planet?.name ?? location.planetId
-    } · ${location.name}`;
-  };
-
-  const getPersonnelStatusMeta = (person: Personnel) => {
-    if (person.status === "wounded") {
-      return { label: "injured", className: "is-injured" };
-    }
-    if (person.status === "assigned" || person.status === "traveling") {
-      return { label: "on mission", className: "is-mission" };
-    }
-    return { label: "idle", className: "is-idle" };
-  };
-
   const getContextLabel = () => {
     if (mapLevel === "galaxy") {
       return "Galaxy";
@@ -771,23 +675,12 @@ export const App = () => {
     }
   };
 
-  useEffect(() => {
-    const speed = SPEEDS[speedIndex] ?? SPEEDS[2];
-    setState((prev) => {
-      timeAccumulatorRef.current.setSpeed(speed, prev.runtime.nowHours);
-      return prev;
-    });
-    const interval = setInterval(() => {
-      setState((prev) => {
-        if (isPaused) {
-          return prev;
-        }
-        const hoursToAdvance = timeAccumulatorRef.current.tick(prev.runtime.nowHours);
-        return hoursToAdvance > 0 ? advanceTime(prev, hoursToAdvance) : prev;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [speedIndex, isPaused]);
+  useGameClock({
+    initialHours: initialScenario.runtime.nowHours,
+    speedIndex,
+    isPaused,
+    setState,
+  });
 
   useEffect(() => {
     const latest = runtime.eventLog[runtime.eventLog.length - 1];
@@ -917,6 +810,14 @@ export const App = () => {
   }, [locationById, selectedLocationId, data.locations]);
 
   useEffect(() => {
+    if (mapMode === "locations") {
+      setExpandedLocationId(null);
+      setExpandedSectorIds([]);
+      setExpandedPlanetIds([]);
+    }
+  }, [mapMode]);
+
+  useEffect(() => {
     const header = headerRef.current;
     const panel = consolePanelRef.current;
     if (!header || !panel || typeof ResizeObserver === "undefined") {
@@ -949,271 +850,66 @@ export const App = () => {
 
   return (
     <div className="page">
-      <div className="toast-stack">
-        {toasts.map((toast) => (
-          <div key={toast.id} className="toast">
-            <span>
-              {toast.parts.map((part, index) =>
-                part.kind === "location" ? (
-                  <button
-                    key={`${toast.id}-loc-${part.locationId}-${index}`}
-                    type="button"
-                    className="toast-location"
-                    onClick={() => jumpToLocation(part.locationId)}
-                  >
-                    {part.value}
-                  </button>
-                ) : part.kind === "personnel" ? (
-                  <button
-                    key={`${toast.id}-person-${part.personnelId}-${index}`}
-                    type="button"
-                    className="toast-agent"
-                    onClick={() => jumpToPersonnel(part.personnelId)}
-                  >
-                    {part.value}
-                  </button>
-                ) : (
-                  <span key={`${toast.id}-text-${index}`}>{part.value}</span>
-                ),
-              )}
-            </span>
-            <button
-              type="button"
-              className="toast-close"
-              aria-label="Dismiss notification"
-              onClick={() =>
-                setToasts((prev) => prev.filter((item) => item.id !== toast.id))
-              }
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
+      <ToastStack
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
+        onLocationClick={jumpToLocation}
+        onPersonnelClick={jumpToPersonnel}
+      />
       {saveMenuMode ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={saveMenuMode === "save" ? "Save game" : "Load game"}
-        >
-          <div className="modal-card">
-            <div className="modal-header">
-              <h3>{saveMenuMode === "save" ? "Save Game" : "Load Game"}</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setSaveMenuMode(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              {slotMetas.map(({ slot, meta }) => (
-                <button
-                  key={slot}
-                  type="button"
-                  className="slot-button"
-                  disabled={saveMenuMode === "load" && !meta}
-                  onClick={() =>
-                    saveMenuMode === "save" ? handleSaveSlot(slot) : handleLoadSlot(slot)
-                  }
-                >
-                  <span>Slot {slot}</span>
-                  <span className="meta">
-                    {meta?.simStamp ? meta.simStamp : "Empty"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <SaveSlotsModal
+          mode={saveMenuMode}
+          slotMetas={slotMetas}
+          onClose={() => setSaveMenuMode(null)}
+          onSaveSlot={handleSaveSlot}
+          onLoadSlot={handleLoadSlot}
+        />
       ) : null}
-      <header className="header" ref={headerRef}>
-        <div className="card header-missions">
-          <div className="header-missions-header">
-            <h2 className="header-missions-title">Imminent Activity</h2>
-            <div className="meta header-missions-meta">
-              {completingSoonMissions.length} completing · {expiringSoonOffers.length} expiring
-            </div>
-          </div>
-          {completingSoonMissions.length === 0 && expiringSoonOffers.length === 0 ? (
-            <p>No assignments finishing soon.</p>
-          ) : (
-            <ul className="header-missions-list">
-              {completingSoonMissions.map((mission) => (
-                <li key={mission.id}>
-                  {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
-                  <button
-                    type="button"
-                    className="inline-link"
-                    onClick={() => jumpToLocation(mission.locationId)}
-                  >
-                    {getLocationLabel(mission.locationId)}
-                  </button>{" "}
-                  · {mission.remainingHours}h remaining · pers{" "}
-                  {mission.assignedPersonnelIds.map((id, index) => (
-                    <span key={id}>
-                      {index > 0 ? ", " : ""}
-                      <button
-                        type="button"
-                        className="inline-link"
-                        onClick={() => jumpToPersonnel(id)}
-                      >
-                        {personnelById.get(id)?.name ?? id}
-                      </button>
-                    </span>
-                  ))}
-                </li>
-              ))}
-              {expiringSoonOffers.map((offer) => (
-                <li key={offer.id}>
-                  Offer:{" "}
-                  <button
-                    type="button"
-                    className="inline-link"
-                    onClick={() => {
-                      jumpToLocation(offer.locationId);
-                      setSelectedPlanId(offer.planId);
-                      triggerPlanFlash(offer.planId);
-                    }}
-                  >
-                    {planById.get(offer.planId)?.name ?? offer.planId}
-                  </button>{" "}
-                  ·{" "}
-                  <button
-                    type="button"
-                    className="inline-link"
-                    onClick={() => jumpToLocation(offer.locationId)}
-                  >
-                    {getLocationLabel(offer.locationId)}
-                  </button>{" "}
-                  ·{" "}
-                  {Math.max(0, Math.ceil(offer.expiresAtHours - runtime.nowHours))}h
-                  {" "}left
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="card header-resources">
-          <div className="header-resources-header">
-            <h2 className="header-resources-title">Resources</h2>
-            <div className="meta header-resources-meta">
-              {formatResources(runtime)}
-            </div>
-          </div>
-          <ul className="header-resources-list">
-            {runtime.materials.map((item) => (
-              <li key={item.id}>
-                <strong>{item.name}</strong> · qty {item.quantity}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="header-console">
-          <div className="resources" ref={consolePanelRef}>
-            <div className="console-menu">
-              <button
-                type="button"
-                className="console-menu-trigger"
-                aria-label="Open command menu"
-                onClick={() => setShowConsoleMenu((prev) => !prev)}
-              >
-                ⋮
-              </button>
-              {showConsoleMenu ? (
-                <div className="console-menu-panel">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSaveMenuMode("save");
-                      setShowConsoleMenu(false);
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSaveMenuMode("load");
-                      setShowConsoleMenu(false);
-                    }}
-                  >
-                    Load
-                  </button>
-                  <button type="button" onClick={handleOpenAdmin}>
-                    Admin
-                  </button>
-                  <button type="button" onClick={handleRestart}>
-                    Restart
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div className="time-indicator-grid">
-              <div className="date-indicator">
-                <div className="date-line">
-                  <span className="date-icon">🗓️</span>
-                  <span key={yearFlashKey} className="date-year-text flash-text">
-                    {year}
-                  </span>
-                  <span className="date-md">
-                    <span key={monthFlashKey} className="flash-text">
-                      {month.toString().padStart(2, "0")}
-                    </span>
-                    -
-                    <span key={dayFlashKey} className="flash-text">
-                      {day.toString().padStart(2, "0")}
-                    </span>
-                  </span>
-                  <span className="date-md">{hourOfDay}h</span>
-                </div>
-              </div>
-              <div className="speed-indicator meta">
-                Speed: {SPEEDS[speedIndex]?.label}
-              </div>
-              <div key={dialFlashKey} className="time-dial-wrap">
-              <div
-                className={`time-dial${isPaused ? " is-paused" : ""}`}
-                style={{ ["--dial-fill" as string]: `${hourFill}%` }}
-                role="button"
-                tabIndex={0}
-                aria-label={isPaused ? "Resume time" : "Pause time"}
-                onClick={() => setIsPaused((prev) => !prev)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setIsPaused((prev) => !prev);
-                  }
-                }}
-              >
-                <div className="time-dial-center" />
-                <div className="time-dial-label">{isPaused ? "⏸" : `${hourOfDay}h`}</div>
-                </div>
-              </div>
-            </div>
-            <div className="actions">
-              <button
-                type="button"
-                className="speed-button"
-                onClick={() => setSpeedIndex((prev) => Math.max(0, prev - 1))}
-              >
-                Slower
-              </button>
-              <button
-                type="button"
-                className="speed-button"
-                onClick={() =>
-                  setSpeedIndex((prev) => Math.min(SPEEDS.length - 1, prev + 1))
-                }
-              >
-                Faster
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <HeaderSection
+        headerRef={headerRef}
+        consolePanelRef={consolePanelRef}
+        completingSoonMissions={completingSoonMissions}
+        expiringSoonOffers={expiringSoonOffers}
+        planById={planById}
+        personnelById={personnelById}
+        getLocationLabel={getLocationLabel}
+        onLocationClick={jumpToLocation}
+        onOfferClick={(offer) => {
+          jumpToLocation(offer.locationId);
+          setSelectedPlanId(offer.planId);
+          triggerPlanFlash(offer.planId);
+        }}
+        onPersonnelClick={jumpToPersonnel}
+        showConsoleMenu={showConsoleMenu}
+        onToggleConsoleMenu={() => setShowConsoleMenu((prev) => !prev)}
+        onOpenSaveMenu={() => {
+          setSaveMenuMode("save");
+          setShowConsoleMenu(false);
+        }}
+        onOpenLoadMenu={() => {
+          setSaveMenuMode("load");
+          setShowConsoleMenu(false);
+        }}
+        onOpenAdmin={handleOpenAdmin}
+        onRestart={handleRestart}
+        speedLabel={SPEEDS[speedIndex]?.label ?? "Normal"}
+        onTogglePause={() => setIsPaused((prev) => !prev)}
+        isPaused={isPaused}
+        hourFill={hourFill}
+        hourOfDay={hourOfDay}
+        year={year}
+        month={month}
+        day={day}
+        yearFlashKey={yearFlashKey}
+        monthFlashKey={monthFlashKey}
+        dayFlashKey={dayFlashKey}
+        dialFlashKey={dialFlashKey}
+        onSlower={() => setSpeedIndex((prev) => Math.max(0, prev - 1))}
+        onFaster={() => setSpeedIndex((prev) => Math.min(SPEEDS.length - 1, prev + 1))}
+        resourcesText={formatResources(runtime)}
+        materials={runtime.materials}
+        nowHours={runtime.nowHours}
+      />
 
       <section className="card map-panel">
         <div className="map-header">
@@ -1406,20 +1102,194 @@ export const App = () => {
             )
           ) : (
             <div className="location-list">
-              {[...data.locations]
-                .sort((a, b) =>
-                  (a.name ?? a.id).localeCompare(b.name ?? b.id),
-                )
-                .map((location) => (
-                  <button
-                    key={location.id}
-                    type="button"
-                    className={location.id === selectedLocationId ? "is-active" : ""}
-                    onClick={() => selectLocationForDetails(location.id)}
-                  >
-                    {getLocationLabel(location.id)}
-                  </button>
-                ))}
+              <div className="location-tree-toolbar">
+                <button
+                  type="button"
+                  className="inline-link"
+                  onClick={() => {
+                    const allSectorIds = data.sectors.map((sector) => sector.id);
+                    const allPlanetIds = data.planets.map((planet) => planet.id);
+                    const shouldCollapseAll =
+                      expandedSectorIds.length === allSectorIds.length &&
+                      expandedPlanetIds.length === allPlanetIds.length;
+                    setExpandedSectorIds(shouldCollapseAll ? [] : allSectorIds);
+                    setExpandedPlanetIds(shouldCollapseAll ? [] : allPlanetIds);
+                  }}
+                >
+                  {expandedSectorIds.length === data.sectors.length &&
+                  expandedPlanetIds.length === data.planets.length
+                    ? "Collapse all"
+                    : "Expand all"}
+                </button>
+              </div>
+              <div className="location-tree">
+                {data.sectors.map((sector) => {
+                  const isSectorExpanded = expandedSectorIds.includes(sector.id);
+                  const sectorPlanets = data.planets.filter(
+                    (planet) => planet.sectorId === sector.id,
+                  );
+                  return (
+                    <div key={sector.id} className="location-tree-node">
+                      <div className="location-tree-row">
+                        <button
+                          type="button"
+                          className="location-tree-toggle"
+                          aria-label={isSectorExpanded ? "Collapse sector" : "Expand sector"}
+                          onClick={() =>
+                            setExpandedSectorIds((prev) =>
+                              prev.includes(sector.id)
+                                ? prev.filter((id) => id !== sector.id)
+                                : [...prev, sector.id],
+                            )
+                          }
+                        >
+                          {isSectorExpanded ? "▾" : "▸"}
+                        </button>
+                        <button
+                          type="button"
+                          className={`location-tree-label${
+                            sector.id === selectedSectorId ? " is-active" : ""
+                          }`}
+                          onClick={() => {
+                            setSelectedSectorId(sector.id);
+                            setExpandedSectorIds((prev) =>
+                              prev.includes(sector.id) ? prev : [...prev, sector.id],
+                            );
+                          }}
+                        >
+                          {sector.name}
+                        </button>
+                      </div>
+                      {isSectorExpanded ? (
+                        <div className="location-tree-details">
+                          <div className="meta">Tags: {sector.tags?.join(", ") ?? "none"}</div>
+                          <div className="meta">Planets: {sectorPlanets.length}</div>
+                          <div className="location-tree-children">
+                            {sectorPlanets.map((planet) => {
+                              const isPlanetExpanded = expandedPlanetIds.includes(planet.id);
+                              const planetLocations = data.locations.filter(
+                                (location) => location.planetId === planet.id,
+                              );
+                              return (
+                                <div key={planet.id} className="location-tree-node">
+                                  <div className="location-tree-row">
+                                    <button
+                                      type="button"
+                                      className="location-tree-toggle"
+                                      aria-label={
+                                        isPlanetExpanded
+                                          ? "Collapse planet"
+                                          : "Expand planet"
+                                      }
+                                      onClick={() =>
+                                        setExpandedPlanetIds((prev) =>
+                                          prev.includes(planet.id)
+                                            ? prev.filter((id) => id !== planet.id)
+                                            : [...prev, planet.id],
+                                        )
+                                      }
+                                    >
+                                      {isPlanetExpanded ? "▾" : "▸"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`location-tree-label${
+                                        planet.id === selectedPlanetId ? " is-active" : ""
+                                      }`}
+                                      onClick={() => {
+                                        setSelectedPlanetId(planet.id);
+                                        setSelectedSectorId(planet.sectorId);
+                                        setExpandedPlanetIds((prev) =>
+                                          prev.includes(planet.id)
+                                            ? prev
+                                            : [...prev, planet.id],
+                                        );
+                                      }}
+                                    >
+                                      {planet.name}
+                                    </button>
+                                  </div>
+                                  {isPlanetExpanded ? (
+                                    <div className="location-tree-details">
+                                      <div className="meta">
+                                        Tags: {planet.tags?.join(", ") ?? "none"}
+                                      </div>
+                                      <div className="meta">
+                                        Position: {planet.position.x}, {planet.position.y}
+                                      </div>
+                                      <div className="meta">
+                                        Locations: {planetLocations.length}
+                                      </div>
+                                      <div className="location-tree-children">
+                                        {planetLocations
+                                          .slice()
+                                          .sort((a, b) =>
+                                            (a.name ?? a.id).localeCompare(b.name ?? b.id),
+                                          )
+                                          .map((location) => {
+                                            const isExpanded =
+                                              expandedLocationId === location.id;
+                                            return (
+                                              <div
+                                                key={location.id}
+                                                className="location-tree-node"
+                                              >
+                                                <div className="location-tree-row">
+                                                  <button
+                                                    type="button"
+                                                    className={`location-tree-label${
+                                                      location.id === selectedLocationId
+                                                        ? " is-active"
+                                                        : ""
+                                                    }`}
+                                                    onClick={() => {
+                                                      selectLocationForDetails(location.id);
+                                                      setExpandedLocationId((prev) =>
+                                                        prev === location.id ? null : location.id,
+                                                      );
+                                                    }}
+                                                  >
+                                                    {location.name}
+                                                  </button>
+                                                </div>
+                                                {isExpanded ? (
+                                                  <div className="location-tree-details">
+                                                    <div className="meta">
+                                                      Resistance {location.attributes.resistance}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Tech {location.attributes.techLevel}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Population {location.attributes.populationDensity}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Customs {location.attributes.customsScrutiny}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Patrols {location.attributes.patrolFrequency}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Garrison {location.attributes.garrisonStrength}
+                                                    </div>
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -1524,7 +1394,7 @@ export const App = () => {
                     </span>
                   </div>
                   <div className="meta">
-                    {person.roles.join(", ")}
+                    {person.roles?.join(", ") ?? "none"}
                   </div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
@@ -1567,7 +1437,7 @@ export const App = () => {
                       {statusMeta.label}
                     </span>
                   </div>
-                  <div className="meta">Roles: {person.roles.join(", ")}</div>
+                  <div className="meta">Roles: {person.roles?.join(", ") ?? "none"}</div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
                   </div>
@@ -1989,7 +1859,7 @@ export const App = () => {
             >
               {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
-                  {person.name} · {person.roles.join(", ")} ·{" "}
+                  {person.name} · {person.roles?.join(", ") ?? "none"} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {getLocationLabel(person.locationId)}
                 </option>
