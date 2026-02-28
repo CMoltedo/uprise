@@ -37,6 +37,9 @@ const normalizeRuntime = (runtime: Partial<GameRuntime>): GameRuntime => ({
   missionOffers: runtime.missionOffers ?? [],
   travel: runtime.travel ?? [],
   eventLog: runtime.eventLog ?? [],
+  locationTruth: runtime.locationTruth ?? {},
+  knowledge: runtime.knowledge ?? { byLocation: {} },
+  trainingAttemptsWithoutGain: runtime.trainingAttemptsWithoutGain ?? {},
 });
 
 const splitLegacyState = (state: unknown): GameRuntime => {
@@ -51,6 +54,9 @@ const splitLegacyState = (state: unknown): GameRuntime => {
     missionOffers?: GameRuntime["missionOffers"];
     travel?: GameRuntime["travel"];
     eventLog?: GameRuntime["eventLog"];
+    locationTruth?: GameRuntime["locationTruth"];
+    knowledge?: GameRuntime["knowledge"];
+    trainingAttemptsWithoutGain?: GameRuntime["trainingAttemptsWithoutGain"];
   };
   if (legacy.runtime) {
     return normalizeRuntime(legacy.runtime);
@@ -66,12 +72,24 @@ const splitLegacyState = (state: unknown): GameRuntime => {
     missionOffers: legacy.missionOffers,
     travel: legacy.travel,
     eventLog: legacy.eventLog,
+    locationTruth: legacy.locationTruth,
+    knowledge: legacy.knowledge,
+    trainingAttemptsWithoutGain: legacy.trainingAttemptsWithoutGain,
   });
 };
 
 export const parseSave = (raw: string): GameRuntime | null => {
   try {
-    const data = JSON.parse(raw) as Partial<SaveFileV1 & SaveFileV2>;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    const data = parsed as Record<string, unknown> & {
+      app?: string;
+      version?: number;
+      runtime?: Partial<GameRuntime>;
+      state?: unknown;
+    };
     if (data.app !== "uprise") {
       return null;
     }

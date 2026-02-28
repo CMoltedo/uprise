@@ -1,0 +1,28 @@
+{
+  "keys": {
+    "garrisonStrength": {
+      "staleAfterHours": 24,
+      "rangePadByQuality": { "low": 15, "med": 8, "high": 3 }
+    },
+    "patrolFrequency": {
+      "staleAfterHours": 18,
+      "rangePadByQuality": { "low": 12, "med": 6, "high": 2 }
+    },
+    "customsScrutiny": {
+      "staleAfterHours": 36,
+      "rangePadByQuality": { "low": 18, "med": 10, "high": 4 }
+    },
+    "enemyAgents": {
+      "staleAfterHours": 8,
+      "rangePadByQuality": {}
+    },
+    "enemyMissions": {
+      "staleAfterHours": 6,
+      "rangePadByQuality": {}
+    },
+    "specialHooks": {
+      "staleAfterHours": 48,
+      "rangePadByQuality": {}
+    }
+  }
+}

@@ -16,25 +16,34 @@
     "nervous": -0.03
   },
   "roleSuccessModifiers": {
-    "agent": 0.01,
-    "diplomat": 0.02,
-    "pilot": 0.01,
-    "operative": 0.02
+    "diplomacy": 0.02,
+    "espionage": 0.01,
+    "combat": 0.02,
+    "operations": 0.01,
+    "command": 0.02,
+    "knowledge": 0.01
   },
   "roleRewardModifiers": {
-    "agent": 0.02,
-    "diplomat": 0.05,
-    "pilot": 0.01,
-    "operative": 0.03
+    "diplomacy": 0.05,
+    "espionage": 0.02,
+    "combat": 0.03,
+    "operations": 0.01,
+    "command": 0.02,
+    "knowledge": 0.02
   },
   "roleConsumeModifiers": {
-    "agent": -0.02,
-    "diplomat": -0.01,
-    "pilot": -0.05,
-    "operative": -0.03
+    "diplomacy": -0.01,
+    "espionage": -0.02,
+    "combat": -0.03,
+    "operations": -0.05,
+    "command": -0.01,
+    "knowledge": -0.02
   },
   "missionFailureInjuryChance": 0.05,
   "recruitAlliesRewardCount": 1,
+  "postMissionRoleChance": 0.02,
+  "trainingBaseRoleChance": 0.12,
+  "trainingRoleChanceIncrementPerAttempt": 0.08,
   "personnelTraits": [
     "cautious",
     "quick-learner",
@@ -49,5 +58,12 @@
     "observant",
     "resourceful"
   ],
-  "personnelRoles": ["agent", "diplomat", "pilot", "operative"]
+  "personnelRoles": [
+    "diplomacy",
+    "espionage",
+    "combat",
+    "operations",
+    "command",
+    "knowledge"
+  ]
 }

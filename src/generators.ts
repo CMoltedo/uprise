@@ -89,10 +89,15 @@ export const generatePersonnel = (
     state.data.locations[0]?.id ??
     "";
 
+  const roles = pickMany(ROLES, roleCount);
+  const roleLevels = Object.fromEntries(roles.map((r) => [r, 1])) as Partial<
+    Record<PersonnelRole, number>
+  >;
   return {
     id: buildUniqueId("personnel", existingIds),
     name: buildUniqueName(existingNames),
-    roles: pickMany(ROLES, roleCount),
+    roles,
+    roleLevels,
     traits: pickMany(TRAITS, traitCount),
     status: "idle",
     locationId,

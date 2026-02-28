@@ -9,7 +9,7 @@
       {
         "id": "personnel-006",
         "name": "Quill Arden",
-        "roles": ["pilot", "operative"],
+        "roles": ["operations", "combat"],
         "traits": ["meticulous", "nervous"],
         "status": "idle",
         "locationId": "corellia-shipyards"
@@ -53,7 +53,7 @@
         "name": "Mine for Intel",
         "summary": "Extract data and rumors from the spice mines.",
         "type": "logistics",
-        "requiredRoles": ["operative"],
+        "requiredRoles": ["combat"],
         "durationHours": 22,
         "baseSuccessChance": 0.55,
         "rewards": {

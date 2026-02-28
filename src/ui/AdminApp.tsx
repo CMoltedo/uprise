@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   GameState,
   MissionPlan,
+  MissionType,
   Personnel,
+  PersonnelRole,
   Location,
   LocationAssignment,
 } from "../models.js";
@@ -401,7 +403,7 @@ export const AdminApp = () => {
                       value={selectedMission.type}
                       disabled={!isBaseline}
                       onChange={(event) =>
-                        updateMission(selectedMission.id, { type: event.target.value })
+                        updateMission(selectedMission.id, { type: event.target.value as MissionType })
                       }
                     />
                   </label>
@@ -448,7 +450,7 @@ export const AdminApp = () => {
                           requiredRoles: event.target.value
                             .split(",")
                             .map((item) => item.trim())
-                            .filter(Boolean),
+                            .filter(Boolean) as PersonnelRole[],
                         })
                       }
                     />
@@ -496,14 +498,21 @@ export const AdminApp = () => {
                         Start hours
                         <input
                           type="number"
-                          value={selectedMission.availability.startHours}
+                          value={
+                            selectedMission.availability.type === "time"
+                              ? selectedMission.availability.startHours
+                              : 0
+                          }
                           disabled={!isBaseline}
                           onChange={(event) =>
                             updateMission(selectedMission.id, {
                               availability: {
                                 type: "time",
                                 startHours: Number(event.target.value),
-                                endHours: selectedMission.availability?.endHours ?? 24,
+                                endHours:
+                                  selectedMission.availability?.type === "time"
+                                    ? selectedMission.availability.endHours
+                                    : 24,
                               },
                             })
                           }
@@ -513,13 +522,20 @@ export const AdminApp = () => {
                         End hours
                         <input
                           type="number"
-                          value={selectedMission.availability.endHours}
+                          value={
+                            selectedMission.availability.type === "time"
+                              ? selectedMission.availability.endHours
+                              : 0
+                          }
                           disabled={!isBaseline}
                           onChange={(event) =>
                             updateMission(selectedMission.id, {
                               availability: {
                                 type: "time",
-                                startHours: selectedMission.availability?.startHours ?? 0,
+                                startHours:
+                                  selectedMission.availability?.type === "time"
+                                    ? selectedMission.availability.startHours
+                                    : 0,
                                 endHours: Number(event.target.value),
                               },
                             })
@@ -793,7 +809,7 @@ export const AdminApp = () => {
                           roles: event.target.value
                             .split(",")
                             .map((item) => item.trim())
-                            .filter(Boolean),
+                            .filter(Boolean) as PersonnelRole[],
                         })
                       }
                     />

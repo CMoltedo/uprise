@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   assignPersonnelToMission,
   assignTravel,
+  getIntelDisplay,
   getMissionSuccessChance,
   validateAssignment,
 } from "../engine.js";
@@ -105,6 +106,14 @@ export const App = () => {
     () => locationById.get(selectedLocationId) ?? null,
     [locationById, selectedLocationId],
   );
+  const formatIntel = (
+    locationId: string,
+    key: "customsScrutiny" | "patrolFrequency" | "garrisonStrength",
+  ) => {
+    const d = getIntelDisplay(state, locationId, key);
+    if (d.status === "unknown") return "?";
+    return `${d.value}${d.status === "stale" ? " (stale)" : ""}`;
+  };
   const personnelByLocationId = useMemo(() => {
     const map = new Map<string, Personnel[]>();
     for (const person of runtime.personnel) {
@@ -199,6 +208,17 @@ export const App = () => {
   }, [availableOffers, runtime.nowHours]);
   const getLocationLabel = (locationId: string) =>
     buildLocationLabel(locationId, locationById, planetById, sectorById);
+  const formatRoleLabel = (roleId: string) =>
+    roleId.charAt(0).toUpperCase() + roleId.slice(1);
+  const formatRolesWithLevel = (person: Personnel) =>
+    person.roles?.length
+      ? person.roles
+          .map(
+            (r) =>
+              `${formatRoleLabel(r)} (${person.roleLevels?.[r] ?? 1})`,
+          )
+          .join(", ")
+      : "none";
   const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) =>
     buildPlanHoursLeftLabel(plan, offerHoursByPlanId, runtime.nowHours);
   const getPersonnelStatusMeta = (person: Personnel) => buildPersonnelStatusMeta(person);
@@ -719,6 +739,22 @@ export const App = () => {
             });
             detail.push({ kind: "text", value: " at " });
             detail.push(makeLocationPart(latest.locationId));
+            if (latest.intelReport) {
+              detail.push({ kind: "text", value: ` — ${latest.intelReport.summary}` });
+            }
+            if (latest.roleGained?.length) {
+              detail.push({ kind: "text", value: " — " });
+              latest.roleGained.forEach((g, i) => {
+                detail.push(makePersonnelPart(g.personnelId));
+                detail.push({
+                  kind: "text",
+                  value: ` gained ${formatRoleLabel(g.roleId)}`,
+                });
+                if (i < latest.roleGained!.length - 1) {
+                  detail.push({ kind: "text", value: "; " });
+                }
+              });
+            }
             return detail;
           })()
         : latest.status === "started"
@@ -739,7 +775,7 @@ export const App = () => {
             ] as const);
     const toast = { id: latest.id, parts: [...parts] };
     setToasts((prev) => [...prev, toast]);
-  }, [runtime.eventLog, personnelById, locationById, planetById, sectorById]);
+  }, [runtime.eventLog, personnelById, locationById, planetById, sectorById, formatRoleLabel]);
 
   useEffect(() => {
     if (toasts.length === 0) {
@@ -1264,13 +1300,13 @@ export const App = () => {
                                                       Population {location.attributes.populationDensity}
                                                     </div>
                                                     <div className="meta">
-                                                      Customs {location.attributes.customsScrutiny}
+                                                      Customs {formatIntel(location.id, "customsScrutiny")}
                                                     </div>
                                                     <div className="meta">
-                                                      Patrols {location.attributes.patrolFrequency}
+                                                      Patrols {formatIntel(location.id, "patrolFrequency")}
                                                     </div>
                                                     <div className="meta">
-                                                      Garrison {location.attributes.garrisonStrength}
+                                                      Garrison {formatIntel(location.id, "garrisonStrength")}
                                                     </div>
                                                   </div>
                                                 ) : null}
@@ -1333,9 +1369,9 @@ export const App = () => {
                 {selectedLocation.attributes.populationDensity}
               </div>
               <div className="meta">
-                Customs {selectedLocation.attributes.customsScrutiny} · Patrols{" "}
-                {selectedLocation.attributes.patrolFrequency} · Garrison{" "}
-                {selectedLocation.attributes.garrisonStrength}
+                Customs {formatIntel(selectedLocation.id, "customsScrutiny")} · Patrols{" "}
+                {formatIntel(selectedLocation.id, "patrolFrequency")} · Garrison{" "}
+                {formatIntel(selectedLocation.id, "garrisonStrength")}
               </div>
             </div>
           ) : (
@@ -1394,7 +1430,7 @@ export const App = () => {
                     </span>
                   </div>
                   <div className="meta">
-                    {person.roles?.join(", ") ?? "none"}
+                    {formatRolesWithLevel(person)}
                   </div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
@@ -1437,7 +1473,7 @@ export const App = () => {
                       {statusMeta.label}
                     </span>
                   </div>
-                  <div className="meta">Roles: {person.roles?.join(", ") ?? "none"}</div>
+                  <div className="meta">Roles: {formatRolesWithLevel(person)}</div>
                   <div className="meta">
                     Traits: {person.traits?.join(", ") ?? "none"}
                   </div>
@@ -1561,6 +1597,12 @@ export const App = () => {
               >
                 <strong>{plan.name}</strong>
                 <div className="meta">{plan.summary}</div>
+                <div className="meta">
+                  Required roles:{" "}
+                  {plan.requiredRoles?.length
+                    ? plan.requiredRoles.map(formatRoleLabel).join(", ")
+                    : "None"}
+                </div>
                 <div className="meta">
                   {getPlanHoursLeftLabel(plan)} · {plan.durationHours}h · Success{" "}
                   {baseSuccessPercent}%
@@ -1859,7 +1901,7 @@ export const App = () => {
             >
               {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
-                  {person.name} · {person.roles?.join(", ") ?? "none"} ·{" "}
+                  {person.name} · {formatRolesWithLevel(person)} ·{" "}
                   {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
                   {getLocationLabel(person.locationId)}
                 </option>
@@ -1927,7 +1969,20 @@ export const App = () => {
                         event.personnelIds
                           .map((id) => personnelById.get(id)?.name ?? id)
                           .join(", ")
-                      } at ${getLocationLabel(event.locationId)}`
+                      } at ${getLocationLabel(event.locationId)}${
+                        event.intelReport
+                          ? ` — ${event.intelReport.summary}`
+                          : ""
+                      }${
+                        event.roleGained?.length
+                          ? ` — ${event.roleGained
+                              .map(
+                                (g) =>
+                                  `${personnelById.get(g.personnelId)?.name ?? g.personnelId} gained ${formatRoleLabel(g.roleId)}`,
+                              )
+                              .join("; ")}`
+                          : ""
+                      }`
                     : event.status === "started"
                       ? `${personnelById.get(event.personnelId)?.name ?? event.personnelId} departed ${
                           getLocationLabel(event.fromLocationId)

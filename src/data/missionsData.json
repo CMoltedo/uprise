@@ -5,7 +5,7 @@
       "name": "Smuggle Supplies",
       "summary": "Move contraband to keep the network supplied.",
       "type": "logistics",
-      "requiredRoles": ["agent", "pilot"],
+      "requiredRoles": ["espionage", "operations"],
       "requiredMaterials": [
         { "materialId": "ship-fuel", "quantity": 2, "consumeChance": 1 }
       ],
@@ -33,7 +33,7 @@
       "name": "Raise Credits",
       "summary": "Leverage contacts for funding and influence.",
       "type": "logistics",
-      "requiredRoles": ["diplomat"],
+      "requiredRoles": ["diplomacy"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.2 }
       ],
@@ -61,7 +61,7 @@
       "name": "Search for Allies",
       "summary": "Scout the Rim for sympathetic recruits.",
       "type": "logistics",
-      "requiredRoles": ["agent", "operative"],
+      "requiredRoles": ["espionage", "combat"],
       "requiredMaterials": [
         { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
       ],
@@ -89,7 +89,7 @@
       "name": "Gather Materials",
       "summary": "Secure raw goods and spare parts.",
       "type": "gather-materials",
-      "requiredRoles": ["agent"],
+      "requiredRoles": ["espionage"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.4 }
       ],
@@ -118,7 +118,7 @@
       "summary": "Coordinate relief and gain goodwill across sectors.",
       "type": "logistics",
       "availability": { "type": "global" },
-      "requiredRoles": ["diplomat", "operative"],
+      "requiredRoles": ["diplomacy", "operations"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
       ],
@@ -147,7 +147,7 @@
       "summary": "Stockpile fuel to keep the fleet mobile.",
       "type": "logistics",
       "availability": { "type": "global" },
-      "requiredRoles": ["agent"],
+      "requiredRoles": ["operations"],
       "requiredMaterials": [
         { "materialId": "ship-fuel", "quantity": 50, "consumeChance": 1 }
       ],
@@ -171,12 +171,38 @@
       }
     },
     {
+      "id": "recon_sweep",
+      "name": "Recon Sweep",
+      "summary": "Gather security intel on garrison, patrols, and customs at a location.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.7,
+      "rewards": {
+        "currency": {
+          "credits": 150,
+          "intel": 2
+        }
+      },
+      "penalties": {
+        "currency": {
+          "credits": -80,
+          "intel": 0
+        }
+      },
+      "intelRewards": {
+        "target": "location",
+        "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
+        "quality": "med"
+      }
+    },
+    {
       "id": "recruit-allies",
       "name": "Recruit Allies",
       "summary": "Build trust and bring a new ally into the cause.",
       "type": "recruit-allies",
       "availability": { "type": "global" },
-      "requiredRoles": ["diplomat"],
+      "requiredRoles": ["diplomacy"],
       "durationHours": 18,
       "baseSuccessChance": 0.6,
       "rewards": {
@@ -193,6 +219,50 @@
           "intel": 0
         }
       }
+    },
+    {
+      "id": "training-espionage",
+      "name": "Espionage Training",
+      "summary": "Structured drills to develop covert skills.",
+      "type": "training",
+      "requiredRoles": ["espionage"],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": {
+        "currency": {
+          "credits": 50,
+          "intel": 0
+        }
+      },
+      "penalties": {
+        "currency": {
+          "credits": -30,
+          "intel": 0
+        }
+      },
+      "trainingReward": { "roleId": "espionage" }
+    },
+    {
+      "id": "training-operations",
+      "name": "Operations Training",
+      "summary": "Logistics and field operations practice.",
+      "type": "training",
+      "requiredRoles": ["operations"],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": {
+        "currency": {
+          "credits": 50,
+          "intel": 0
+        }
+      },
+      "penalties": {
+        "currency": {
+          "credits": -30,
+          "intel": 0
+        }
+      },
+      "trainingReward": { "roleId": "operations" }
     }
   ],
   "locationAssignments": [
@@ -223,6 +293,41 @@
       "planId": "gather-materials",
       "appearanceChance": 0.05,
       "windowHours": 22
+    },
+    {
+      "id": "assign-tatooine-recon",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "recon_sweep",
+      "appearanceChance": 0.06,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-coruscant-recon",
+      "locationId": "coruscant-senate",
+      "planId": "recon_sweep",
+      "appearanceChance": 0.05,
+      "windowHours": 18
+    },
+    {
+      "id": "assign-corellia-recon",
+      "locationId": "corellia-shipyards",
+      "planId": "recon_sweep",
+      "appearanceChance": 0.06,
+      "windowHours": 22
+    },
+    {
+      "id": "assign-tatooine-training-espionage",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "training-espionage",
+      "appearanceChance": 0.08,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-sullust-training-operations",
+      "locationId": "sullust-capital",
+      "planId": "training-operations",
+      "appearanceChance": 0.08,
+      "windowHours": 24
     }
   ]
 }

@@ -16,9 +16,19 @@ import type {
   MissionRewardBundle,
   MissionRewardItem,
   TravelAssignment,
+  LocationTruth,
+  IntelSnapshot,
+  IntelQuality,
 } from "./models.js";
 import { generatePersonnel } from "./generators.js";
 import balance from "./data/balance.json";
+import intelDefsData from "./data/intel_defs.json";
+
+interface IntelDefEntry {
+  staleAfterHours: number;
+  rangePadByQuality?: { low?: number; med?: number; high?: number };
+}
+const intelDefs: Record<string, IntelDefEntry> = (intelDefsData as { keys: Record<string, IntelDefEntry> }).keys ?? {};
 
 const clampChance = (chance: number) => Math.max(0, Math.min(1, chance));
 
@@ -138,6 +148,73 @@ const applyRewardModifier = (
 
 export const getLocation = (state: GameState, locationId: string) =>
   state.data.locations.find((location) => location.id === locationId);
+
+export const getLocationTruth = (state: GameState, locationId: string): LocationTruth => {
+  const stored = state.runtime.locationTruth?.[locationId];
+  if (stored) {
+    return stored;
+  }
+  const location = getLocation(state, locationId);
+  if (!location) {
+    return {
+      garrisonStrength: 0,
+      patrolFrequency: 0,
+      customsScrutiny: 0,
+      enemyAgents: [],
+      enemyMissions: [],
+      specialHooks: [],
+    };
+  }
+  const a = location.attributes;
+  return {
+    garrisonStrength: a.garrisonStrength,
+    patrolFrequency: a.patrolFrequency,
+    customsScrutiny: a.customsScrutiny,
+    enemyAgents: [],
+    enemyMissions: [],
+    specialHooks: [],
+  };
+};
+
+export type IntelDisplayStatus = "unknown" | "known" | "stale";
+
+export type IntelDisplayResult =
+  | { status: "unknown" }
+  | {
+      status: "known" | "stale";
+      value: number | string[];
+      observedAtHours: number;
+      ageHours: number;
+    };
+
+export const getIntelDisplay = (
+  state: GameState,
+  locationId: string,
+  intelKey: string,
+): IntelDisplayResult => {
+  const snapshot = state.runtime.knowledge?.byLocation?.[locationId]?.[intelKey];
+  if (!snapshot) {
+    return { status: "unknown" };
+  }
+  const nowHours = state.runtime.nowHours;
+  const ageHours = nowHours - snapshot.observedAtHours;
+  const def = intelDefs[intelKey];
+  const staleAfterHours = def?.staleAfterHours ?? 24;
+  if (ageHours > staleAfterHours) {
+    return {
+      status: "stale",
+      value: snapshot.value,
+      observedAtHours: snapshot.observedAtHours,
+      ageHours,
+    };
+  }
+  return {
+    status: "known",
+    value: snapshot.value,
+    observedAtHours: snapshot.observedAtHours,
+    ageHours,
+  };
+};
 
 export const getMissionPlan = (state: GameState, planId: string) =>
   state.data.missionPlans.find((plan) => plan.id === planId);
@@ -307,6 +384,95 @@ const applyRecruitRewards = (
     };
   }
   return workingState;
+};
+
+const getTruthValueByKey = (truth: LocationTruth, key: string): number | string[] => {
+  switch (key) {
+    case "garrisonStrength":
+      return truth.garrisonStrength;
+    case "patrolFrequency":
+      return truth.patrolFrequency;
+    case "customsScrutiny":
+      return truth.customsScrutiny;
+    case "enemyAgents":
+      return truth.enemyAgents ?? [];
+    case "enemyMissions":
+      return truth.enemyMissions ?? [];
+    case "specialHooks":
+      return truth.specialHooks ?? [];
+    default:
+      return 0;
+  }
+};
+
+const isTruthKeyNumeric = (key: string): boolean =>
+  key === "garrisonStrength" || key === "patrolFrequency" || key === "customsScrutiny";
+
+const INTEL_KEY_LABEL: Record<string, string> = {
+  customsScrutiny: "Customs",
+  patrolFrequency: "Patrols",
+  garrisonStrength: "Garrison",
+  enemyAgents: "Enemy agents",
+  enemyMissions: "Enemy missions",
+  specialHooks: "Special hooks",
+};
+
+const INTEL_DISPLAY_ORDER = [
+  "customsScrutiny",
+  "patrolFrequency",
+  "garrisonStrength",
+  "enemyAgents",
+  "enemyMissions",
+  "specialHooks",
+];
+
+const applyIntelRewards = (
+  state: GameState,
+  locationId: string,
+  keys: string[],
+  quality: IntelQuality,
+): { nextState: GameState; summary: string } => {
+  const truth = getLocationTruth(state, locationId);
+  const byLocation = state.runtime.knowledge?.byLocation ?? {};
+  const locKnowledge = { ...(byLocation[locationId] ?? {}) };
+  const partByKey: Record<string, string> = {};
+  for (const key of keys) {
+    const value = getTruthValueByKey(truth, key);
+    const snapshot: IntelSnapshot = {
+      observedAtHours: state.runtime.nowHours,
+      value,
+      quality,
+    };
+    locKnowledge[key] = snapshot;
+    const label = INTEL_KEY_LABEL[key] ?? key;
+    if (isTruthKeyNumeric(key)) {
+      partByKey[key] = `${label} ${value as number}`;
+    } else {
+      const arr = value as string[];
+      if (arr.length > 0) {
+        partByKey[key] = `${label}: ${arr.join(", ")}`;
+      }
+    }
+  }
+  const orderedParts = INTEL_DISPLAY_ORDER.filter((k) => partByKey[k]).map(
+    (k) => partByKey[k],
+  );
+  const summary =
+    orderedParts.length > 0 ? `Recon: ${orderedParts.join(" · ")}` : "Recon: no data";
+  const nextKnowledge = {
+    byLocation: {
+      ...byLocation,
+      [locationId]: locKnowledge,
+    },
+  };
+  const nextState: GameState = {
+    ...state,
+    runtime: {
+      ...state.runtime,
+      knowledge: nextKnowledge,
+    },
+  };
+  return { nextState, summary };
 };
 
 const isPlanInTimeWindow = (state: GameState, plan: MissionPlan) => {
@@ -560,6 +726,107 @@ const resolveMission = (
     remainingHours: 0,
   };
 
+  let intelReport: { summary: string; keys: string[] } | undefined;
+  let stateAfterRewards: GameState = {
+    ...state,
+    runtime: {
+      ...state.runtime,
+      resources: rewardResult.resources,
+      materials: rewardResult.materials,
+      personnel: updatedPersonnel,
+      missions: state.runtime.missions.map((item) =>
+        item.id === mission.id ? updatedMission : item,
+      ),
+    },
+  };
+  if (
+    success &&
+    plan.intelRewards &&
+    plan.intelRewards.target === "location" &&
+    mission.locationId !== "galaxy"
+  ) {
+    const { nextState: withIntel, summary } = applyIntelRewards(
+      stateAfterRewards,
+      mission.locationId,
+      plan.intelRewards.keys,
+      plan.intelRewards.quality,
+    );
+    stateAfterRewards = withIntel;
+    intelReport = { summary, keys: plan.intelRewards.keys };
+  }
+
+  const roleGained: Array<{ personnelId: string; roleId: string }> = [];
+  let personnelAfterRoleGains = stateAfterRewards.runtime.personnel;
+  let trainingAttemptsWithoutGain: Record<string, Record<string, number>> = {
+    ...(state.runtime.trainingAttemptsWithoutGain ?? {}),
+  };
+
+  if (success) {
+    const postChance = (balance as { postMissionRoleChance?: number }).postMissionRoleChance ?? 0.02;
+    for (const personnelId of mission.assignedPersonnelIds) {
+      const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
+      if (!person) continue;
+      const candidates = (plan.requiredRoles as PersonnelRole[]).filter(
+        (r) => !person.roles.includes(r),
+      );
+      if (candidates.length === 0) continue;
+      if (Math.random() >= postChance) continue;
+      const roleId = candidates[Math.floor(Math.random() * candidates.length)] as PersonnelRole;
+      personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
+        p.id !== personnelId
+          ? p
+          : {
+              ...p,
+              roles: [...p.roles, roleId],
+              roleLevels: { ...p.roleLevels, [roleId]: 1 },
+            },
+      );
+      roleGained.push({ personnelId, roleId });
+    }
+
+    if (plan.type === "training" && plan.trainingReward) {
+      const roleId = plan.trainingReward.roleId;
+      const baseChance = (balance as { trainingBaseRoleChance?: number }).trainingBaseRoleChance ?? 0.12;
+      const increment = (balance as { trainingRoleChanceIncrementPerAttempt?: number }).trainingRoleChanceIncrementPerAttempt ?? 0.08;
+      for (const personnelId of mission.assignedPersonnelIds) {
+        const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
+        if (!person || person.roles.includes(roleId)) continue;
+        const attempts =
+          trainingAttemptsWithoutGain[personnelId]?.[plan.id] ?? 0;
+        const chance = Math.min(
+          1,
+          baseChance + attempts * increment,
+        );
+        if (Math.random() < chance) {
+          personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
+            p.id !== personnelId
+              ? p
+              : {
+                  ...p,
+                  roles: [...p.roles, roleId],
+                  roleLevels: { ...p.roleLevels, [roleId]: 1 },
+                },
+          );
+          roleGained.push({ personnelId, roleId });
+          const next = { ...(trainingAttemptsWithoutGain[personnelId] ?? {}) };
+          delete next[plan.id];
+          trainingAttemptsWithoutGain = {
+            ...trainingAttemptsWithoutGain,
+            [personnelId]: next,
+          };
+        } else {
+          trainingAttemptsWithoutGain = {
+            ...trainingAttemptsWithoutGain,
+            [personnelId]: {
+              ...(trainingAttemptsWithoutGain[personnelId] ?? {}),
+              [plan.id]: attempts + 1,
+            },
+          };
+        }
+      }
+    }
+  }
+
   const event: MissionEvent = {
     id: `event-${Date.now()}`,
     kind: "mission",
@@ -571,18 +838,16 @@ const resolveMission = (
     personnelIds: [...mission.assignedPersonnelIds],
     rewardsApplied: rewardResult.applied,
     locationId: mission.locationId,
+    ...(intelReport && { intelReport }),
+    ...(roleGained.length > 0 && { roleGained }),
   };
 
   let nextState: GameState = {
-    ...state,
+    ...stateAfterRewards,
     runtime: {
-      ...state.runtime,
-      resources: rewardResult.resources,
-      materials: rewardResult.materials,
-      personnel: updatedPersonnel,
-      missions: state.runtime.missions.map((item) =>
-        item.id === mission.id ? updatedMission : item,
-      ),
+      ...stateAfterRewards.runtime,
+      personnel: personnelAfterRoleGains,
+      trainingAttemptsWithoutGain,
       eventLog: [...state.runtime.eventLog, event],
     },
   };
@@ -628,6 +893,13 @@ const updateMissionOffers = (state: GameState): GameState => {
       );
     if (cooldownUntil > nowHours) {
       continue;
+    }
+    if (plan.requiresKnownHook) {
+      const hookSnapshot = state.runtime.knowledge?.byLocation?.[assignment.locationId]?.specialHooks;
+      const knownHooks: string[] = Array.isArray(hookSnapshot?.value) ? (hookSnapshot!.value as string[]) : [];
+      if (!knownHooks.includes(plan.requiresKnownHook)) {
+        continue;
+      }
     }
     const roll = Math.random();
     if (roll <= assignment.appearanceChance) {

@@ -5,50 +5,99 @@
       {
         "id": "personnel-001",
         "name": "Rowan Hale",
-        "roles": ["agent", "pilot"],
-        "traits": ["cautious", "quick-learner"],
+        "roles": [
+          "espionage",
+          "operations"
+        ],
+        "traits": [
+          "cautious",
+          "quick-learner"
+        ],
         "status": "idle",
         "locationId": "tatooine-mos-eisley"
       },
       {
         "id": "personnel-002",
         "name": "Sable Quinn",
-        "roles": ["diplomat", "operative"],
-        "traits": ["charismatic", "schemer"],
+        "roles": [
+          "diplomacy",
+          "combat"
+        ],
+        "traits": [
+          "charismatic",
+          "schemer"
+        ],
         "status": "idle",
         "locationId": "corellia-shipyards"
       },
       {
         "id": "personnel-003",
         "name": "Vela Dorne",
-        "roles": ["agent", "operative"],
-        "traits": ["reckless", "loyal"],
+        "roles": [
+          "espionage",
+          "combat"
+        ],
+        "traits": [
+          "reckless",
+          "loyal"
+        ],
         "status": "idle",
         "locationId": "tatooine-mos-espa"
       },
       {
         "id": "personnel-004",
         "name": "Kato Rhys",
-        "roles": ["pilot"],
-        "traits": ["stoic", "hotheaded"],
+        "roles": [
+          "operations"
+        ],
+        "traits": [
+          "stoic",
+          "hotheaded"
+        ],
         "status": "idle",
         "locationId": "sullust-capital"
       },
       {
         "id": "personnel-005",
         "name": "Mira Solis",
-        "roles": ["diplomat"],
-        "traits": ["empathetic", "proud"],
+        "roles": [
+          "diplomacy"
+        ],
+        "traits": [
+          "empathetic",
+          "proud"
+        ],
         "status": "idle",
         "locationId": "coruscant-senate"
       },
       {
         "id": "personnel-006",
         "name": "Tarin Vale",
-        "roles": ["diplomat", "operative"],
-        "traits": ["steady", "calculating"],
+        "roles": [
+          "diplomacy",
+          "combat"
+        ],
+        "traits": [
+          "steady",
+          "calculating"
+        ],
         "status": "idle",
         "locationId": "corellia-shipyards"
+      },
+      {
+        "id": "personnel-007",
+        "name": "Dax Webb",
+        "roles": [
+          "espionage",
+          "combat"
+        ],
+        "traits": [
+          "cautious",
+          "calculating",
+          "meticulous"
+        ],
+        "status": "idle",
+        "locationId": "tatooine-mos-eisley"
       }
     ],
     "sectors": [],
@@ -67,13 +116,29 @@
     },
     "personnel": [],
     "materials": [
-      { "id": "blaster-parts", "name": "Blaster Parts", "quantity": 8 },
-      { "id": "med-kits", "name": "Med Kits", "quantity": 5 },
-      { "id": "ship-fuel", "name": "Ship Fuel", "quantity": 12 }
+      {
+        "id": "blaster-parts",
+        "name": "Blaster Parts",
+        "quantity": 8
+      },
+      {
+        "id": "med-kits",
+        "name": "Med Kits",
+        "quantity": 5
+      },
+      {
+        "id": "ship-fuel",
+        "name": "Ship Fuel",
+        "quantity": 12
+      }
     ],
     "missions": [],
     "missionOffers": [],
     "travel": [],
-    "eventLog": []
+    "eventLog": [],
+    "locationTruth": {},
+    "knowledge": {
+      "byLocation": {}
+    }
   }
 }

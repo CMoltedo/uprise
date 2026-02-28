@@ -1,6 +1,12 @@
 export type Faction = "rebels" | "empire";
 
-export type PersonnelRole = "agent" | "diplomat" | "pilot" | "operative";
+export type PersonnelRole =
+  | "diplomacy"
+  | "espionage"
+  | "combat"
+  | "operations"
+  | "command"
+  | "knowledge";
 export type PersonnelStatus =
   | "idle"
   | "assigned"
@@ -9,7 +15,33 @@ export type PersonnelStatus =
   | "captured";
 
 export type MissionStatus = "planned" | "active" | "resolved" | "failed";
-export type MissionType = "logistics" | "gather-materials" | "recruit-allies";
+export type MissionType =
+  | "logistics"
+  | "gather-materials"
+  | "recruit-allies"
+  | "espionage"
+  | "training";
+
+export type IntelQuality = "low" | "med" | "high";
+
+export interface LocationTruth {
+  garrisonStrength: number;
+  patrolFrequency: number;
+  customsScrutiny: number;
+  enemyAgents?: string[];
+  enemyMissions?: string[];
+  specialHooks?: string[];
+}
+
+export interface IntelSnapshot {
+  observedAtHours: number;
+  value: number | string[];
+  quality: IntelQuality;
+}
+
+export interface PlayerKnowledge {
+  byLocation: Record<string, Record<string, IntelSnapshot>>;
+}
 
 export interface Personnel {
   id: string;
@@ -18,6 +50,7 @@ export interface Personnel {
   traits?: string[];
   status: PersonnelStatus;
   locationId: string;
+  roleLevels?: Partial<Record<PersonnelRole, number>>;
 }
 
 export interface Sector {
@@ -103,6 +136,13 @@ export interface MissionPlan {
   baseSuccessChance: number;
   rewards?: MissionRewardBundle;
   penalties?: MissionRewardBundle;
+  intelRewards?: {
+    target: "location";
+    keys: string[];
+    quality: IntelQuality;
+  };
+  requiresKnownHook?: string;
+  trainingReward?: { roleId: PersonnelRole };
 }
 
 export interface MissionInstance {
@@ -144,6 +184,8 @@ export interface MissionEvent {
   personnelIds: string[];
   rewardsApplied: MissionRewardBundle;
   locationId: string;
+  intelReport?: { summary: string; keys: string[] };
+  roleGained?: Array<{ personnelId: string; roleId: string }>;
 }
 
 export interface TravelEvent {
@@ -194,6 +236,9 @@ export interface GameRuntime {
   missionOffers: MissionOffer[];
   travel: TravelAssignment[];
   eventLog: EventLogEntry[];
+  locationTruth?: Record<string, LocationTruth>;
+  knowledge?: PlayerKnowledge;
+  trainingAttemptsWithoutGain?: Record<string, Record<string, number>>;
 }
 
 export interface GameState {

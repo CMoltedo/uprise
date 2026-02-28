@@ -46,6 +46,9 @@ export interface ScenarioOverrides {
     missionOffers?: Array<PartialWithId<MissionOffer>>;
     travel?: Array<PartialWithId<TravelAssignment>>;
     eventLog?: Array<PartialWithId<EventLogEntry>>;
+    locationTruth?: GameRuntime["locationTruth"];
+    knowledge?: GameRuntime["knowledge"];
+    trainingAttemptsWithoutGain?: GameRuntime["trainingAttemptsWithoutGain"];
   };
 }
 
@@ -257,6 +260,32 @@ export const buildScenario = (
         overrides.runtime?.eventLog,
         (current, override) => ({ ...current, ...override }) as EventLogEntry,
       ),
+      locationTruth: {
+        ...(baseline.runtime.locationTruth ?? {}),
+        ...(overrides.runtime?.locationTruth ?? {}),
+      },
+      knowledge: {
+        byLocation: {
+          ...(baseline.runtime.knowledge?.byLocation ?? {}),
+          ...(overrides.runtime?.knowledge?.byLocation ?? {}),
+        },
+      },
+      trainingAttemptsWithoutGain: (() => {
+        const base = baseline.runtime.trainingAttemptsWithoutGain ?? {};
+        const over = overrides.runtime?.trainingAttemptsWithoutGain ?? {};
+        const personnelIds = new Set([
+          ...Object.keys(base),
+          ...Object.keys(over),
+        ]);
+        const merged: Record<string, Record<string, number>> = {};
+        for (const pid of personnelIds) {
+          merged[pid] = {
+            ...(base[pid] ?? {}),
+            ...(over[pid] ?? {}),
+          };
+        }
+        return merged;
+      })(),
     },
   };
 };
