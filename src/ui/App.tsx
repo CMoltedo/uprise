@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type DragEvent } from "react";
 import {
   assignPersonnelToMission,
   assignTravel,
+  canPersonnelBeAssignedToTrainingPlan,
   getIntelDisplay,
   getMissionSuccessChance,
+  getTraitsForPerson,
   validateAssignment,
 } from "../engine.js";
 import type { GameRuntime, GameState, Personnel } from "../models.js";
@@ -28,6 +30,7 @@ import {
 import { HeaderSection } from "./components/HeaderSection.js";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.js";
 import { ToastStack, type ToastMessage } from "./components/ToastStack.js";
+import { EventDetailModal } from "./components/EventDetailModal.js";
 
 export const App = () => {
   const initialScenario = createInitialGameState();
@@ -370,6 +373,26 @@ export const App = () => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const lastEventIdRef = useRef<string | null>(null);
+  const [eventDetailEventId, setEventDetailEventId] = useState<string | null>(null);
+  const pausedForEventModalRef = useRef(false);
+
+  const openEventDetail = useCallback((id: string) => {
+    setEventDetailEventId(id);
+    setIsPaused((prev) => {
+      if (!prev) {
+        pausedForEventModalRef.current = true;
+        return true;
+      }
+      return prev;
+    });
+  }, []);
+  const closeEventDetail = useCallback(() => {
+    setEventDetailEventId(null);
+    if (pausedForEventModalRef.current) {
+      pausedForEventModalRef.current = false;
+      setIsPaused(false);
+    }
+  }, []);
 
   const nowDate = getUniverseDate(runtime.nowHours);
   const year = nowDate.getUTCFullYear();
@@ -775,6 +798,19 @@ export const App = () => {
             ] as const);
     const toast = { id: latest.id, parts: [...parts] };
     setToasts((prev) => [...prev, toast]);
+    const shouldOpenDetail =
+      latest.kind === "mission" ||
+      (latest.kind === "travel" && latest.status === "arrived");
+    if (shouldOpenDetail) {
+      setEventDetailEventId(latest.id);
+      setIsPaused((prev) => {
+        if (!prev) {
+          pausedForEventModalRef.current = true;
+          return true;
+        }
+        return prev;
+      });
+    }
   }, [runtime.eventLog, personnelById, locationById, planetById, sectorById, formatRoleLabel]);
 
   useEffect(() => {
@@ -891,7 +927,18 @@ export const App = () => {
         onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
         onLocationClick={jumpToLocation}
         onPersonnelClick={jumpToPersonnel}
+        onToastClick={(id) => openEventDetail(id)}
       />
+      {eventDetailEventId ? (
+        <EventDetailModal
+          event={runtime.eventLog.find((e) => e.id === eventDetailEventId) ?? null}
+          gameState={state}
+          getLocationLabel={getLocationLabel}
+          onClose={closeEventDetail}
+          onLocationClick={jumpToLocation}
+          onPersonnelClick={jumpToPersonnel}
+        />
+      ) : null}
       {saveMenuMode ? (
         <SaveSlotsModal
           mode={saveMenuMode}
@@ -1382,7 +1429,14 @@ export const App = () => {
             <p>No personnel at this location.</p>
           ) : (
             <div className="personnel-cards">
-              {locationPersonnel.map((person) => (
+              {locationPersonnel.map((person) => {
+                const contextPlanId = dragPersonnelId ? hoverPlanId : selectedPlanId;
+                const contextPlan = contextPlanId ? planById.get(contextPlanId) : null;
+                const cannotTrainForThisPlan =
+                  contextPlan &&
+                  contextPlan.type === "training" &&
+                  !canPersonnelBeAssignedToTrainingPlan(person, contextPlan);
+                return (
                 <div
                   key={person.id}
                   className={`personnel-card${
@@ -1393,9 +1447,11 @@ export const App = () => {
                       : ""
                   }${flashPersonnelId === person.id ? " is-flashing" : ""}${
                     selectedPersonnelIds.includes(person.id) ? " is-selected" : ""
-                  }`}
+                  }${cannotTrainForThisPlan ? " cannot-train-new-role" : ""}`}
                   style={getPersonnelOptionStyle(person)}
-                  draggable={person.status === "idle"}
+                  draggable={
+                    person.status === "idle" && !cannotTrainForThisPlan
+                  }
                   onClick={(event) => {
                     if (event.ctrlKey || event.metaKey) {
                       setSelectedPersonnelIds((prev) =>
@@ -1433,7 +1489,7 @@ export const App = () => {
                     {formatRolesWithLevel(person)}
                   </div>
                   <div className="meta">
-                    Traits: {person.traits?.join(", ") ?? "none"}
+                    Traits: {getTraitsForPerson(person).join(", ") || "none"}
                   </div>
                   <div className="meta">
                     <button
@@ -1453,7 +1509,8 @@ export const App = () => {
                     </div>
                   ) : null}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
           <div className="assignment-details-title">Agent Details</div>
@@ -1475,7 +1532,7 @@ export const App = () => {
                   </div>
                   <div className="meta">Roles: {formatRolesWithLevel(person)}</div>
                   <div className="meta">
-                    Traits: {person.traits?.join(", ") ?? "none"}
+                    Traits: {getTraitsForPerson(person).join(", ") || "none"}
                   </div>
                   <div className="meta">
                     Location:{" "}
@@ -1902,7 +1959,7 @@ export const App = () => {
               {runtime.personnel.map((person) => (
                 <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
                   {person.name} · {formatRolesWithLevel(person)} ·{" "}
-                  {person.traits?.join(", ") ?? "no traits"} · {person.status} ·{" "}
+                  {getTraitsForPerson(person).join(", ") || "no traits"} · {person.status} ·{" "}
                   {getLocationLabel(person.locationId)}
                 </option>
               ))}
@@ -1964,32 +2021,38 @@ export const App = () => {
               .reverse()
               .map((event) => (
                 <li key={event.id}>
-                  {event.kind === "mission"
-                    ? `${event.success ? "Successful" : "Failed"} mission by ${
-                        event.personnelIds
-                          .map((id) => personnelById.get(id)?.name ?? id)
-                          .join(", ")
-                      } at ${getLocationLabel(event.locationId)}${
-                        event.intelReport
-                          ? ` — ${event.intelReport.summary}`
-                          : ""
-                      }${
-                        event.roleGained?.length
-                          ? ` — ${event.roleGained
-                              .map(
-                                (g) =>
-                                  `${personnelById.get(g.personnelId)?.name ?? g.personnelId} gained ${formatRoleLabel(g.roleId)}`,
-                              )
-                              .join("; ")}`
-                          : ""
-                      }`
-                    : event.status === "started"
-                      ? `${personnelById.get(event.personnelId)?.name ?? event.personnelId} departed ${
-                          getLocationLabel(event.fromLocationId)
-                        } for ${getLocationLabel(event.toLocationId)} (${event.travelHours ?? 0}h)`
-                      : `${personnelById.get(event.personnelId)?.name ?? event.personnelId} arrived at ${
-                          getLocationLabel(event.toLocationId)
-                        } from ${getLocationLabel(event.fromLocationId)}`}
+                  <button
+                    type="button"
+                    className="event-log-entry"
+                    onClick={() => openEventDetail(event.id)}
+                  >
+                    {event.kind === "mission"
+                      ? `${event.success ? "Successful" : "Failed"} ${planById.get(event.planId)?.name ?? event.planId} mission by ${
+                          event.personnelIds
+                            .map((id) => personnelById.get(id)?.name ?? id)
+                            .join(", ")
+                        } at ${getLocationLabel(event.locationId)}${
+                          event.intelReport
+                            ? ` — ${event.intelReport.summary}`
+                            : ""
+                        }${
+                          event.roleGained?.length
+                            ? ` — ${event.roleGained
+                                .map(
+                                  (g) =>
+                                    `${personnelById.get(g.personnelId)?.name ?? g.personnelId} gained ${formatRoleLabel(g.roleId)}`,
+                                )
+                                .join("; ")}`
+                            : ""
+                        }`
+                      : event.status === "started"
+                        ? `${personnelById.get(event.personnelId)?.name ?? event.personnelId} departed ${
+                            getLocationLabel(event.fromLocationId)
+                          } for ${getLocationLabel(event.toLocationId)} (${event.travelHours ?? 0}h)`
+                        : `${personnelById.get(event.personnelId)?.name ?? event.personnelId} arrived at ${
+                            getLocationLabel(event.toLocationId)
+                          } from ${getLocationLabel(event.fromLocationId)}`}
+                  </button>
                 </li>
               ))}
           </ul>

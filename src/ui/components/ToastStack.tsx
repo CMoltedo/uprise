@@ -13,6 +13,7 @@ type ToastStackProps = {
   onDismiss: (id: string) => void;
   onLocationClick: (locationId: string) => void;
   onPersonnelClick: (personnelId: string) => void;
+  onToastClick?: (id: string) => void;
 };
 
 export const ToastStack = ({
@@ -20,18 +21,42 @@ export const ToastStack = ({
   onDismiss,
   onLocationClick,
   onPersonnelClick,
+  onToastClick,
 }: ToastStackProps) => (
   <div className="toast-stack">
     {toasts.map((toast) => (
-      <div key={toast.id} className="toast">
-        <span>
+      <div
+        key={toast.id}
+        className={`toast${onToastClick ? " toast-clickable" : ""}`}
+      >
+        <span
+          className="toast-content"
+          role={onToastClick ? "button" : undefined}
+          tabIndex={onToastClick ? 0 : undefined}
+          onClick={
+            onToastClick ? () => onToastClick(toast.id) : undefined
+          }
+          onKeyDown={
+            onToastClick
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onToastClick(toast.id);
+                  }
+                }
+              : undefined
+          }
+        >
           {toast.parts.map((part, index) =>
             part.kind === "location" ? (
               <button
                 key={`${toast.id}-loc-${part.locationId}-${index}`}
                 type="button"
                 className="toast-location"
-                onClick={() => onLocationClick(part.locationId)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLocationClick(part.locationId);
+                }}
               >
                 {part.value}
               </button>
@@ -40,7 +65,10 @@ export const ToastStack = ({
                 key={`${toast.id}-person-${part.personnelId}-${index}`}
                 type="button"
                 className="toast-agent"
-                onClick={() => onPersonnelClick(part.personnelId)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPersonnelClick(part.personnelId);
+                }}
               >
                 {part.value}
               </button>

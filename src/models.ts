@@ -47,7 +47,12 @@ export interface Personnel {
   id: string;
   name: string;
   roles: PersonnelRole[];
+  /** @deprecated Use immutableTraits + mutableTraits. Combined for modifier math when present. */
   traits?: string[];
+  /** Immutable personality/class traits (1–3 at creation, never change). */
+  immutableTraits?: string[];
+  /** Mutable traits gained from missions, capture, injury, recovery. */
+  mutableTraits?: string[];
   status: PersonnelStatus;
   locationId: string;
   roleLevels?: Partial<Record<PersonnelRole, number>>;
@@ -186,6 +191,9 @@ export interface MissionEvent {
   locationId: string;
   intelReport?: { summary: string; keys: string[] };
   roleGained?: Array<{ personnelId: string; roleId: string }>;
+  traitGained?: Array<{ personnelId: string; traitId: string }>;
+  /** For successful recruit-allies missions: ids of newly recruited personnel. */
+  recruitedPersonnelIds?: string[];
 }
 
 export interface TravelEvent {

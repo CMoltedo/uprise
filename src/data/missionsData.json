@@ -225,7 +225,7 @@
       "name": "Espionage Training",
       "summary": "Structured drills to develop covert skills.",
       "type": "training",
-      "requiredRoles": ["espionage"],
+      "requiredRoles": [],
       "durationHours": 12,
       "baseSuccessChance": 0.85,
       "rewards": {
@@ -247,7 +247,7 @@
       "name": "Operations Training",
       "summary": "Logistics and field operations practice.",
       "type": "training",
-      "requiredRoles": ["operations"],
+      "requiredRoles": [],
       "durationHours": 12,
       "baseSuccessChance": 0.85,
       "rewards": {
@@ -263,6 +263,261 @@
         }
       },
       "trainingReward": { "roleId": "operations" }
+    },
+    {
+      "id": "training-combat",
+      "name": "Combat Training",
+      "summary": "Weapons and tactics drills to sharpen fighting skills.",
+      "type": "training",
+      "requiredRoles": [],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": { "currency": { "credits": 50, "intel": 0 } },
+      "penalties": { "currency": { "credits": -30, "intel": 0 } },
+      "trainingReward": { "roleId": "combat" }
+    },
+    {
+      "id": "training-diplomacy",
+      "name": "Diplomacy Training",
+      "summary": "Practice negotiation and persuasion techniques.",
+      "type": "training",
+      "requiredRoles": [],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": { "currency": { "credits": 50, "intel": 0 } },
+      "penalties": { "currency": { "credits": -30, "intel": 0 } },
+      "trainingReward": { "roleId": "diplomacy" }
+    },
+    {
+      "id": "training-command",
+      "name": "Command Training",
+      "summary": "Leadership and coordination exercises.",
+      "type": "training",
+      "requiredRoles": [],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": { "currency": { "credits": 50, "intel": 0 } },
+      "penalties": { "currency": { "credits": -30, "intel": 0 } },
+      "trainingReward": { "roleId": "command" }
+    },
+    {
+      "id": "training-knowledge",
+      "name": "Knowledge Training",
+      "summary": "Study and analysis to expand expertise.",
+      "type": "training",
+      "requiredRoles": [],
+      "durationHours": 12,
+      "baseSuccessChance": 0.85,
+      "rewards": { "currency": { "credits": 50, "intel": 0 } },
+      "penalties": { "currency": { "credits": -30, "intel": 0 } },
+      "trainingReward": { "roleId": "knowledge" }
+    },
+    {
+      "id": "coordinate-strike",
+      "name": "Coordinate Strike",
+      "summary": "Lead a targeted operation against regime assets.",
+      "type": "logistics",
+      "requiredRoles": ["command", "combat"],
+      "durationHours": 22,
+      "baseSuccessChance": 0.6,
+      "rewards": { "currency": { "credits": 450, "intel": 2 } },
+      "penalties": { "currency": { "credits": -180, "intel": 0 } }
+    },
+    {
+      "id": "lead-safe-house",
+      "name": "Lead Safe House",
+      "summary": "Establish and run a secure location for operatives.",
+      "type": "logistics",
+      "requiredRoles": ["command", "operations"],
+      "durationHours": 24,
+      "baseSuccessChance": 0.65,
+      "rewards": {
+        "currency": { "credits": 320, "intel": 2 },
+        "items": [
+          { "materialId": "blaster-parts", "quantity": 1 },
+          { "materialId": "ship-fuel", "quantity": 1 }
+        ]
+      },
+      "penalties": { "currency": { "credits": -95, "intel": 0 } }
+    },
+    {
+      "id": "analyze-intel",
+      "name": "Analyze Intel",
+      "summary": "Process raw data into actionable intelligence.",
+      "type": "espionage",
+      "requiredRoles": ["knowledge"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.7,
+      "rewards": { "currency": { "credits": 120, "intel": 3 } },
+      "penalties": { "currency": { "credits": -70, "intel": 0 } },
+      "intelRewards": {
+        "target": "location",
+        "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
+        "quality": "med"
+      }
+    },
+    {
+      "id": "decrypt-comms",
+      "name": "Decrypt Comms",
+      "summary": "Intercept and decode enemy communications.",
+      "type": "espionage",
+      "requiredRoles": ["espionage", "knowledge"],
+      "durationHours": 16,
+      "baseSuccessChance": 0.68,
+      "rewards": { "currency": { "credits": 200, "intel": 2 } },
+      "penalties": { "currency": { "credits": -90, "intel": 0 } },
+      "intelRewards": {
+        "target": "location",
+        "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
+        "quality": "high"
+      }
+    },
+    {
+      "id": "sabotage",
+      "name": "Sabotage",
+      "summary": "Disable or destroy key regime infrastructure.",
+      "type": "logistics",
+      "requiredRoles": ["combat", "operations"],
+      "requiredMaterials": [{ "materialId": "blaster-parts", "quantity": 2, "consumeChance": 0.6 }],
+      "durationHours": 20,
+      "baseSuccessChance": 0.52,
+      "rewards": { "currency": { "credits": 500, "intel": 3 } },
+      "penalties": { "currency": { "credits": -220, "intel": 0 } }
+    },
+    {
+      "id": "extraction",
+      "name": "Extraction",
+      "summary": "Rescue a contact or asset from hostile territory.",
+      "type": "logistics",
+      "requiredRoles": ["combat", "espionage"],
+      "durationHours": 20,
+      "baseSuccessChance": 0.55,
+      "rewards": { "currency": { "credits": 380, "intel": 2 } },
+      "penalties": { "currency": { "credits": -150, "intel": 0 } }
+    },
+    {
+      "id": "deep-recon",
+      "name": "Deep Recon",
+      "summary": "In-depth surveillance to uncover garrison and patrol patterns.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 20,
+      "baseSuccessChance": 0.6,
+      "rewards": { "currency": { "credits": 200, "intel": 3 } },
+      "penalties": { "currency": { "credits": -100, "intel": 0 } },
+      "intelRewards": {
+        "target": "location",
+        "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
+        "quality": "high"
+      }
+    },
+    {
+      "id": "plant-misinformation",
+      "name": "Plant Misinformation",
+      "summary": "Spread false intel to disrupt enemy operations.",
+      "type": "espionage",
+      "requiredRoles": ["espionage", "diplomacy"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.65,
+      "rewards": { "currency": { "credits": 180, "intel": 2 } },
+      "penalties": { "currency": { "credits": -85, "intel": 0 } }
+    },
+    {
+      "id": "secure-supply-line",
+      "name": "Secure Supply Line",
+      "summary": "Establish a reliable route for moving goods past checkpoints.",
+      "type": "logistics",
+      "requiredRoles": ["operations", "espionage"],
+      "requiredMaterials": [{ "materialId": "ship-fuel", "quantity": 3, "consumeChance": 0.8 }],
+      "durationHours": 24,
+      "baseSuccessChance": 0.68,
+      "rewards": {
+        "currency": { "credits": 350, "intel": 1 },
+        "items": [
+          { "materialId": "blaster-parts", "quantity": 2 },
+          { "materialId": "ship-fuel", "quantity": 2 }
+        ]
+      },
+      "penalties": { "currency": { "credits": -120, "intel": 0 } }
+    },
+    {
+      "id": "establish-cache",
+      "name": "Establish Cache",
+      "summary": "Stockpile materials in a hidden location.",
+      "type": "gather-materials",
+      "requiredRoles": ["operations"],
+      "durationHours": 16,
+      "baseSuccessChance": 0.7,
+      "rewards": {
+        "currency": { "credits": 180, "intel": 1 },
+        "items": [
+          { "materialId": "blaster-parts", "quantity": 2 },
+          { "materialId": "ship-fuel", "quantity": 2 },
+          { "materialId": "med-kits", "quantity": 1 }
+        ]
+      },
+      "penalties": { "currency": { "credits": -55, "intel": 0 } }
+    },
+    {
+      "id": "recruit-specialist",
+      "name": "Recruit Specialist",
+      "summary": "Bring a skilled contact into the cause.",
+      "type": "recruit-allies",
+      "availability": { "type": "global" },
+      "requiredRoles": ["diplomacy", "knowledge"],
+      "durationHours": 20,
+      "baseSuccessChance": 0.55,
+      "rewards": { "currency": { "intel": 1 }, "effects": [{ "type": "new-agent", "data": { "count": 1 } }] },
+      "penalties": { "currency": { "credits": -70, "intel": 0 } }
+    },
+    {
+      "id": "spread-propaganda",
+      "name": "Spread Propaganda",
+      "summary": "Distribute messages that build support for the resistance.",
+      "type": "logistics",
+      "requiredRoles": ["diplomacy", "knowledge"],
+      "durationHours": 16,
+      "baseSuccessChance": 0.65,
+      "rewards": { "currency": { "credits": 220, "intel": 2 } },
+      "penalties": { "currency": { "credits": -70, "intel": 0 } }
+    },
+    {
+      "id": "undermine-trust",
+      "name": "Undermine Trust",
+      "summary": "Seed doubt about the regime through rumors and evidence.",
+      "type": "espionage",
+      "requiredRoles": ["espionage", "diplomacy"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.6,
+      "rewards": { "currency": { "credits": 180, "intel": 3 } },
+      "penalties": { "currency": { "credits": -80, "intel": 0 } }
+    },
+    {
+      "id": "rally-locals",
+      "name": "Rally Locals",
+      "summary": "Galvanize public sentiment against the regime.",
+      "type": "logistics",
+      "requiredRoles": ["diplomacy"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.66,
+      "rewards": { "currency": { "credits": 200, "intel": 2 } },
+      "penalties": { "currency": { "credits": -65, "intel": 0 } }
+    },
+    {
+      "id": "expose-corruption",
+      "name": "Expose Corruption",
+      "summary": "Leak evidence of regime abuses to erode legitimacy.",
+      "type": "espionage",
+      "requiredRoles": ["espionage", "knowledge"],
+      "durationHours": 20,
+      "baseSuccessChance": 0.58,
+      "rewards": { "currency": { "credits": 160, "intel": 3 } },
+      "penalties": { "currency": { "credits": -90, "intel": 0 } },
+      "intelRewards": {
+        "target": "location",
+        "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
+        "quality": "med"
+      }
     }
   ],
   "locationAssignments": [
@@ -328,6 +583,132 @@
       "planId": "training-operations",
       "appearanceChance": 0.08,
       "windowHours": 24
+    },
+    {
+      "id": "assign-corellia-training-combat",
+      "locationId": "corellia-shipyards",
+      "planId": "training-combat",
+      "appearanceChance": 0.08,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-coruscant-training-diplomacy",
+      "locationId": "coruscant-senate",
+      "planId": "training-diplomacy",
+      "appearanceChance": 0.08,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-tatooine-training-command",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "training-command",
+      "appearanceChance": 0.08,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-sullust-training-knowledge",
+      "locationId": "sullust-capital",
+      "planId": "training-knowledge",
+      "appearanceChance": 0.08,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-corellia-coordinate-strike",
+      "locationId": "corellia-shipyards",
+      "planId": "coordinate-strike",
+      "appearanceChance": 0.04,
+      "windowHours": 22
+    },
+    {
+      "id": "assign-tatooine-lead-safe-house",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "lead-safe-house",
+      "appearanceChance": 0.05,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-coruscant-analyze-intel",
+      "locationId": "coruscant-senate",
+      "planId": "analyze-intel",
+      "appearanceChance": 0.05,
+      "windowHours": 18
+    },
+    {
+      "id": "assign-corellia-decrypt-comms",
+      "locationId": "corellia-shipyards",
+      "planId": "decrypt-comms",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-sullust-sabotage",
+      "locationId": "sullust-capital",
+      "planId": "sabotage",
+      "appearanceChance": 0.04,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-tatooine-extraction",
+      "locationId": "tatooine-mos-espa",
+      "planId": "extraction",
+      "appearanceChance": 0.04,
+      "windowHours": 22
+    },
+    {
+      "id": "assign-coruscant-deep-recon",
+      "locationId": "coruscant-senate",
+      "planId": "deep-recon",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-tatooine-plant-misinformation",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "plant-misinformation",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-corellia-secure-supply-line",
+      "locationId": "corellia-shipyards",
+      "planId": "secure-supply-line",
+      "appearanceChance": 0.05,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-sullust-establish-cache",
+      "locationId": "sullust-capital",
+      "planId": "establish-cache",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-coruscant-spread-propaganda",
+      "locationId": "coruscant-senate",
+      "planId": "spread-propaganda",
+      "appearanceChance": 0.05,
+      "windowHours": 18
+    },
+    {
+      "id": "assign-tatooine-undermine-trust",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "undermine-trust",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-sullust-rally-locals",
+      "locationId": "sullust-capital",
+      "planId": "rally-locals",
+      "appearanceChance": 0.05,
+      "windowHours": 18
+    },
+    {
+      "id": "assign-coruscant-expose-corruption",
+      "locationId": "coruscant-senate",
+      "planId": "expose-corruption",
+      "appearanceChance": 0.04,
+      "windowHours": 22
     }
   ]
 }

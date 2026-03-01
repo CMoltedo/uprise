@@ -405,6 +405,11 @@ ul {
   opacity: 0.55;
 }
 
+.personnel-card.cannot-train-new-role {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .mission-drop-list {
   display: flex;
   flex-direction: column;
@@ -914,6 +919,10 @@ button:hover {
   font-size: 0.95rem;
 }
 
+.toast-clickable .toast-content {
+  cursor: pointer;
+}
+
 .toast-close {
   appearance: none;
   border: none;
@@ -988,6 +997,63 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.event-detail-modal .modal-body {
+  max-width: 480px;
+}
+
+.event-detail-section {
+  margin-top: 12px;
+}
+
+.event-detail-section:first-child {
+  margin-top: 0;
+}
+
+.event-detail-section h4 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+
+.event-detail-mission-name {
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.event-detail-list,
+.event-detail-sublist {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.event-detail-success {
+  color: #3fb950;
+}
+
+.event-detail-failed {
+  color: #f85149;
+}
+
+.event-detail-rewards {
+  margin-top: 4px;
+}
+
+.event-log-entry {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.event-log-entry:hover {
+  text-decoration: underline;
 }
 
 .slot-button {

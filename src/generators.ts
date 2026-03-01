@@ -34,10 +34,14 @@ const LAST_NAMES = [
   "Wren",
 ];
 
-const TRAITS = balance.personnelTraits ?? [];
-
 const ROLES: PersonnelRole[] = (balance.personnelRoles ??
   []) as PersonnelRole[];
+
+const IMMUTABLE_POOL: string[] = balance.immutableTraits ?? [];
+const CLASS_POOL: string[] = balance.traitClass ?? [];
+const immutableChance = (balance as { immutableTraitChance?: number }).immutableTraitChance ?? 0.2;
+const immutableMin = (balance as { immutableTraitMinCount?: number }).immutableTraitMinCount ?? 1;
+const immutableMax = (balance as { immutableTraitMaxCount?: number }).immutableTraitMaxCount ?? 3;
 
 const pickOne = <T,>(items: T[]) => items[Math.floor(Math.random() * items.length)];
 
@@ -50,6 +54,37 @@ const pickMany = <T,>(items: T[], count: number) => {
   }
   return picked;
 };
+
+/** Pick immutable traits: 1-3 total, at most one from class pool. */
+function pickImmutableTraits(): string[] {
+  if (IMMUTABLE_POOL.length === 0) {
+    return [];
+  }
+  if (Math.random() >= immutableChance) {
+    return [];
+  }
+  const count =
+    immutableMin +
+    Math.floor(Math.random() * (immutableMax - immutableMin + 1));
+  const personalityOnly = IMMUTABLE_POOL.filter((t) => !CLASS_POOL.includes(t));
+  const result: string[] = [];
+  const used = new Set<string>();
+
+  if (CLASS_POOL.length > 0 && count > 0 && Math.random() < 0.5) {
+    const cls = pickOne(CLASS_POOL);
+    result.push(cls);
+    used.add(cls);
+  }
+
+  const remaining = personalityOnly.filter((t) => !used.has(t));
+  const need = count - result.length;
+  if (need > 0 && remaining.length > 0) {
+    const picked = pickMany(remaining, Math.min(need, remaining.length));
+    result.push(...picked);
+  }
+
+  return result;
+}
 
 const buildUniqueId = (prefix: string, existing: Set<string>) => {
   let id = "";
@@ -82,7 +117,6 @@ export const generatePersonnel = (
     state.runtime.personnel.map((person) => person.name),
   );
   const roleCount = Math.random() < 0.6 ? 1 : 2;
-  const traitCount = Math.random() < 0.5 ? 1 : 2;
   const locationId =
     options?.locationId ??
     state.runtime.headquartersId ??
@@ -93,12 +127,15 @@ export const generatePersonnel = (
   const roleLevels = Object.fromEntries(roles.map((r) => [r, 1])) as Partial<
     Record<PersonnelRole, number>
   >;
+  const immutableTraits = pickImmutableTraits();
+
   return {
     id: buildUniqueId("personnel", existingIds),
     name: buildUniqueName(existingNames),
     roles,
     roleLevels,
-    traits: pickMany(TRAITS, traitCount),
+    immutableTraits,
+    mutableTraits: [],
     status: "idle",
     locationId,
   };

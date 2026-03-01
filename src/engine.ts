@@ -62,7 +62,60 @@ const getModifierSummary = (
 };
 
 const getPersonnelTraits = (personnel: Personnel[]) =>
-  personnel.flatMap((person) => person.traits ?? []);
+  personnel.flatMap((person) =>
+    (person.immutableTraits ?? person.traits ?? []).concat(
+      person.mutableTraits ?? [],
+    ),
+  );
+
+/** All traits for one person (for display / modifier). */
+export const getTraitsForPerson = (person: Personnel): string[] =>
+  (person.immutableTraits ?? person.traits ?? []).concat(
+    person.mutableTraits ?? [],
+  );
+
+/** Total trait count for one person (cap 8). */
+export const getPersonnelTraitCount = (person: Personnel): number =>
+  (person.immutableTraits ?? person.traits ?? []).length +
+  (person.mutableTraits ?? []).length;
+
+const MAX_TRAITS = (balance as { maxPersonnelTraits?: number }).maxPersonnelTraits ?? 8;
+const MAX_PERSONNEL_ROLES = (balance as { maxPersonnelRoles?: number }).maxPersonnelRoles ?? 3;
+const MUTABLE_BASE_CHANCE = (balance as { mutableTraitBaseChance?: number }).mutableTraitBaseChance ?? 0.15;
+const DIMINISH_FACTOR = (balance as { mutableTraitDiminishFactor?: number }).mutableTraitDiminishFactor ?? 0.15;
+
+/** Chance multiplier for gaining a new mutable trait (decreases as trait count approaches max). */
+export const getMutableTraitGainChanceMultiplier = (person: Personnel): number => {
+  const n = getPersonnelTraitCount(person);
+  if (n >= MAX_TRAITS) return 0;
+  return Math.max(0.1, Math.min(1, 1 - (n - 4) * DIMINISH_FACTOR));
+};
+
+const MUTABLE_POOL: string[] = (balance as { mutableTraits?: string[] }).mutableTraits ?? [];
+
+/** Try to add one mutable trait to a person; returns updated person if added, same ref if not. */
+function tryAddMutableTrait(
+  person: Personnel,
+  candidateTraits: string[],
+  rng: () => number = Math.random,
+): Personnel {
+  if (getPersonnelTraitCount(person) >= MAX_TRAITS) return person;
+  const existing = new Set(
+    (person.immutableTraits ?? person.traits ?? []).concat(
+      person.mutableTraits ?? [],
+    ),
+  );
+  const available = candidateTraits.filter((t) => !existing.has(t));
+  if (available.length === 0) return person;
+  const chance =
+    MUTABLE_BASE_CHANCE * getMutableTraitGainChanceMultiplier(person);
+  if (rng() >= chance) return person;
+  const trait = available[Math.floor(rng() * available.length)];
+  return {
+    ...person,
+    mutableTraits: [...(person.mutableTraits ?? []), trait],
+  };
+}
 
 const getPersonnelRoles = (personnel: Personnel[]) =>
   personnel.flatMap((person) => person.roles);
@@ -546,6 +599,19 @@ export const validateAssignment = (
       errors.push(`Missing roles: ${plan.requiredRoles.join(", ")}`);
     }
   }
+  if (plan.type === "training" && plan.trainingReward) {
+    const rewardRoleId = plan.trainingReward.roleId;
+    for (const person of personnel) {
+      if (
+        person.roles.length >= MAX_PERSONNEL_ROLES &&
+        !person.roles.includes(rewardRoleId)
+      ) {
+        errors.push(
+          `Maximum roles reached; ${person.name} cannot train for another role.`,
+        );
+      }
+    }
+  }
   if (!isPlanInTimeWindow(state, plan)) {
     errors.push("Assignment is not available at this time.");
   }
@@ -557,6 +623,17 @@ export const validateAssignment = (
   }
   errors.push(...hasMaterials(state, plan.requiredMaterials));
   return errors;
+};
+
+/** True if this person can be assigned to this plan. For training plans with a reward role: false when at max roles and person does not already have the reward role. */
+export const canPersonnelBeAssignedToTrainingPlan = (
+  person: Personnel,
+  plan: MissionPlan,
+): boolean => {
+  if (plan.type !== "training" || !plan.trainingReward) return true;
+  const rewardRoleId = plan.trainingReward.roleId;
+  if (person.roles.includes(rewardRoleId)) return true;
+  return person.roles.length < MAX_PERSONNEL_ROLES;
 };
 
 export const assignPersonnelToMission = (
@@ -791,6 +868,7 @@ const resolveMission = (
       for (const personnelId of mission.assignedPersonnelIds) {
         const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
         if (!person || person.roles.includes(roleId)) continue;
+        if (person.roles.length >= MAX_PERSONNEL_ROLES) continue;
         const attempts =
           trainingAttemptsWithoutGain[personnelId]?.[plan.id] ?? 0;
         const chance = Math.min(
@@ -827,6 +905,89 @@ const resolveMission = (
     }
   }
 
+  const successCandidatesByType: Record<string, string[]> = {
+    logistics: ["pilot", "driver", "battle-tested", "confident", "lucky"],
+    "gather-materials": ["driver", "battle-tested", "confident", "lucky"],
+    "recruit-allies": ["connected", "confident", "lucky"],
+    espionage: ["sharpened", "pickpocket", "confident", "lucky"],
+    training: ["battle-tested", "confident", "sharpened", "lucky"],
+  };
+  const failureCandidates = (plan.type === "espionage"
+    ? ["shaken", "overcautious", "burned"]
+    : ["shaken", "overcautious", "reckless"]).filter((t) =>
+    MUTABLE_POOL.includes(t),
+  );
+  const woundedCandidates = ["scarred", "trauma"].filter((t) =>
+    MUTABLE_POOL.includes(t),
+  );
+  const successCandidates =
+    successCandidatesByType[plan.type] ?? ["battle-tested", "confident", "lucky"];
+
+  let personnelAfterTraitGains = personnelAfterRoleGains;
+  if (plan.type !== "training") {
+    for (const personnelId of mission.assignedPersonnelIds) {
+      let person = personnelAfterTraitGains.find((p) => p.id === personnelId);
+      if (!person) continue;
+      if (success) {
+        personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+          p.id !== personnelId ? p : tryAddMutableTrait(p, successCandidates),
+        );
+      } else {
+        personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+          p.id !== personnelId ? p : tryAddMutableTrait(p, failureCandidates),
+        );
+      }
+      person = personnelAfterTraitGains.find((p) => p.id === personnelId)!;
+      if (nextStatus === "wounded" && person) {
+        personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+          p.id !== personnelId ? p : tryAddMutableTrait(p, woundedCandidates),
+        );
+      }
+    }
+  }
+
+  const traitGained: Array<{ personnelId: string; traitId: string }> = [];
+  for (const personnelId of mission.assignedPersonnelIds) {
+    const before = personnelAfterRoleGains.find((p) => p.id === personnelId);
+    const after = personnelAfterTraitGains.find((p) => p.id === personnelId);
+    if (!before || !after) continue;
+    const beforeTraits = before.mutableTraits ?? [];
+    const afterTraits = after.mutableTraits ?? [];
+    if (afterTraits.length > beforeTraits.length) {
+      const beforeSet = new Set(beforeTraits);
+      for (const t of afterTraits) {
+        if (!beforeSet.has(t)) {
+          traitGained.push({ personnelId, traitId: t });
+        }
+      }
+    }
+  }
+
+  let personnelForNextState = personnelAfterTraitGains;
+  const recruitedPersonnelIds: string[] = [];
+  if (success && plan.type === "recruit-allies") {
+    const recruitCount = balance.recruitAlliesRewardCount ?? 1;
+    const stateBeforeRecruit: GameState = {
+      ...stateAfterRewards,
+      runtime: {
+        ...stateAfterRewards.runtime,
+        personnel: personnelAfterTraitGains,
+        trainingAttemptsWithoutGain,
+      },
+    };
+    const stateAfterRecruit = applyRecruitRewards(
+      stateBeforeRecruit,
+      mission.locationId,
+      recruitCount,
+    );
+    personnelForNextState = stateAfterRecruit.runtime.personnel;
+    recruitedPersonnelIds.push(
+      ...stateAfterRecruit.runtime.personnel
+        .slice(-recruitCount)
+        .map((p) => p.id),
+    );
+  }
+
   const event: MissionEvent = {
     id: `event-${Date.now()}`,
     kind: "mission",
@@ -840,21 +1001,19 @@ const resolveMission = (
     locationId: mission.locationId,
     ...(intelReport && { intelReport }),
     ...(roleGained.length > 0 && { roleGained }),
+    ...(traitGained.length > 0 && { traitGained }),
+    ...(recruitedPersonnelIds.length > 0 && { recruitedPersonnelIds }),
   };
 
-  let nextState: GameState = {
+  const nextState: GameState = {
     ...stateAfterRewards,
     runtime: {
       ...stateAfterRewards.runtime,
-      personnel: personnelAfterRoleGains,
+      personnel: personnelForNextState,
       trainingAttemptsWithoutGain,
       eventLog: [...state.runtime.eventLog, event],
     },
   };
-  if (success && plan.type === "recruit-allies") {
-    const recruitCount = balance.recruitAlliesRewardCount ?? 1;
-    nextState = applyRecruitRewards(nextState, mission.locationId, recruitCount);
-  }
   return nextState;
 };
 

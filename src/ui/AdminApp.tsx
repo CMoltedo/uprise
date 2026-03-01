@@ -12,7 +12,7 @@ import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
-import { refreshMissionOffers } from "../engine.js";
+import { getTraitsForPerson, refreshMissionOffers } from "../engine.js";
 import { parseSave, serializeSave } from "../persistence.js";
 
 const ADMIN_CURRENT_DRAFT_KEY = "uprise-admin-current-draft";
@@ -255,7 +255,8 @@ export const AdminApp = () => {
       id,
       name: "New Agent",
       roles: [],
-      traits: [],
+      immutableTraits: [],
+      mutableTraits: [],
       status: "idle",
       locationId,
     };
@@ -818,13 +819,15 @@ export const AdminApp = () => {
                     Traits (comma)
                     <input
                       type="text"
-                      value={selectedPersonnel.traits?.join(", ") ?? ""}
+                      value={getTraitsForPerson(selectedPersonnel).join(", ")}
                       onChange={(event) =>
                         updatePersonnel(selectedPersonnel.id, {
                           traits: event.target.value
                             .split(",")
                             .map((item) => item.trim())
                             .filter(Boolean),
+                          immutableTraits: undefined,
+                          mutableTraits: undefined,
                         })
                       }
                     />
