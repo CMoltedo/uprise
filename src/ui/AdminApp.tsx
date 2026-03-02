@@ -7,9 +7,12 @@ import type {
   PersonnelRole,
   Location,
   LocationAssignment,
+  Planet,
+  Sector,
 } from "../models.js";
 import baselineState from "../data/baselineState.json";
 import scenarioOverrides from "../data/scenarioOverrides.json";
+import balance from "../data/balance.json";
 import { buildScenario } from "../scenarios.js";
 import type { ScenarioOverrides } from "../scenarios.js";
 import { getTraitsForPerson, refreshMissionOffers } from "../engine.js";
@@ -58,6 +61,18 @@ export const AdminApp = () => {
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>(
     state.runtime.personnel[0]?.id ?? "",
   );
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string>(
+    state.data.planets[0]?.id ?? "",
+  );
+  const [selectedSectorId, setSelectedSectorId] = useState<string>(
+    state.data.sectors[0]?.id ?? "",
+  );
+  const [selectedRoleDefinitionId, setSelectedRoleDefinitionId] = useState<string>(
+    ((balance as { personnelRoles?: string[] }).personnelRoles ?? [])[0] ?? "",
+  );
+  const [traitDefinitionTab, setTraitDefinitionTab] = useState<
+    "immutable" | "mutable" | "class"
+  >("immutable");
   const [saveMessage, setSaveMessage] = useState<string>("");
   const isBaseline = mode === "baseline";
 
@@ -67,6 +82,8 @@ export const AdminApp = () => {
     setSelectedMissionId(nextState.data.missionPlans[0]?.id ?? "");
     setSelectedLocationId(nextState.data.locations[0]?.id ?? "");
     setSelectedPersonnelId(nextState.runtime.personnel[0]?.id ?? "");
+    setSelectedPlanetId(nextState.data.planets[0]?.id ?? "");
+    setSelectedSectorId(nextState.data.sectors[0]?.id ?? "");
     setSaveMessage("");
   }, [mode]);
 
@@ -83,6 +100,14 @@ export const AdminApp = () => {
       state.runtime.personnel.find((item) => item.id === selectedPersonnelId) ??
       null,
     [state.runtime.personnel, selectedPersonnelId],
+  );
+  const selectedPlanet = useMemo(
+    () => state.data.planets.find((p) => p.id === selectedPlanetId) ?? null,
+    [state.data.planets, selectedPlanetId],
+  );
+  const selectedSector = useMemo(
+    () => state.data.sectors.find((s) => s.id === selectedSectorId) ?? null,
+    [state.data.sectors, selectedSectorId],
   );
 
   const updateMission = (planId: string, patch: Partial<MissionPlan>) => {
@@ -114,6 +139,28 @@ export const AdminApp = () => {
         ...prev.runtime,
         personnel: prev.runtime.personnel.map((person) =>
           person.id === personnelId ? { ...person, ...patch } : person,
+        ),
+      },
+    }));
+  };
+  const updatePlanet = (planetId: string, patch: Partial<Planet>) => {
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        planets: prev.data.planets.map((planet) =>
+          planet.id === planetId ? { ...planet, ...patch } : planet,
+        ),
+      },
+    }));
+  };
+  const updateSector = (sectorId: string, patch: Partial<Sector>) => {
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        sectors: prev.data.sectors.map((sector) =>
+          sector.id === sectorId ? { ...sector, ...patch } : sector,
         ),
       },
     }));
@@ -246,6 +293,44 @@ export const AdminApp = () => {
       },
     }));
     setSelectedLocationId(id);
+  };
+
+  const addPlanet = () => {
+    const id = `custom-planet-${Date.now()}`;
+    const sectorId = state.data.sectors[0]?.id ?? "";
+    const planet: Planet = {
+      id,
+      name: "New Planet",
+      sectorId,
+      tags: [],
+      position: { x: 50, y: 50 },
+    };
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        planets: [...prev.data.planets, planet],
+      },
+    }));
+    setSelectedPlanetId(id);
+  };
+
+  const addSector = () => {
+    const id = `custom-sector-${Date.now()}`;
+    const sector: Sector = {
+      id,
+      name: "New Sector",
+      tags: [],
+      polygon: [],
+    };
+    setState((prev) => ({
+      ...prev,
+      data: {
+        ...prev.data,
+        sectors: [...prev.data.sectors, sector],
+      },
+    }));
+    setSelectedSectorId(id);
   };
 
   const addPersonnel = () => {
@@ -657,6 +742,17 @@ export const AdminApp = () => {
                       ))}
                     </select>
                   </label>
+                  {(() => {
+                    const planet = state.data.planets.find(
+                      (p) => p.id === selectedLocation.planetId,
+                    );
+                    const sector = planet
+                      ? state.data.sectors.find((s) => s.id === planet.sectorId)
+                      : null;
+                    return sector ? (
+                      <div className="meta">Sector: {sector.name}</div>
+                    ) : null;
+                  })()}
                   <div className="admin-row">
                     <label className="field">
                       Resistance
@@ -767,6 +863,326 @@ export const AdminApp = () => {
 
         <div className="card admin-panel">
           <div className="admin-section-header">
+            <h2>Planets</h2>
+            <button type="button" onClick={addPlanet} disabled={!isBaseline}>
+              Add
+            </button>
+          </div>
+          <div className="admin-layout">
+            <div className="admin-list">
+              {state.data.planets.map((planet) => (
+                <button
+                  key={planet.id}
+                  type="button"
+                  className={`admin-list-item${
+                    planet.id === selectedPlanetId ? " is-active" : ""
+                  }`}
+                  onClick={() => setSelectedPlanetId(planet.id)}
+                >
+                  {planet.name}
+                </button>
+              ))}
+            </div>
+            <div className="admin-form">
+              {selectedPlanet ? (
+                <>
+                  {!isBaseline ? (
+                    <div className="meta">
+                      Planet data edits are available in baseline mode.
+                    </div>
+                  ) : null}
+                  <label className="field">
+                    Name
+                    <input
+                      type="text"
+                      value={selectedPlanet.name}
+                      disabled={!isBaseline}
+                      onChange={(event) =>
+                        updatePlanet(selectedPlanet.id, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Sector
+                    <select
+                      value={selectedPlanet.sectorId}
+                      disabled={!isBaseline}
+                      onChange={(event) =>
+                        updatePlanet(selectedPlanet.id, {
+                          sectorId: event.target.value,
+                        })
+                      }
+                    >
+                      {state.data.sectors.map((sector) => (
+                        <option key={sector.id} value={sector.id}>
+                          {sector.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Tags (comma)
+                    <input
+                      type="text"
+                      value={(selectedPlanet.tags ?? []).join(", ")}
+                      disabled={!isBaseline}
+                      onChange={(event) =>
+                        updatePlanet(selectedPlanet.id, {
+                          tags: event.target.value
+                            .split(",")
+                            .map((t) => t.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                    />
+                  </label>
+                  <div className="admin-row">
+                    <label className="field">
+                      Position X
+                      <input
+                        type="number"
+                        value={selectedPlanet.position.x}
+                        disabled={!isBaseline}
+                        onChange={(event) =>
+                          updatePlanet(selectedPlanet.id, {
+                            position: {
+                              ...selectedPlanet.position,
+                              x: Number(event.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Position Y
+                      <input
+                        type="number"
+                        value={selectedPlanet.position.y}
+                        disabled={!isBaseline}
+                        onChange={(event) =>
+                          updatePlanet(selectedPlanet.id, {
+                            position: {
+                              ...selectedPlanet.position,
+                              y: Number(event.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div className="meta">Select a planet to edit.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="card admin-panel">
+          <div className="admin-section-header">
+            <h2>Sectors</h2>
+            <button type="button" onClick={addSector} disabled={!isBaseline}>
+              Add
+            </button>
+          </div>
+          <div className="admin-layout">
+            <div className="admin-list">
+              {state.data.sectors.map((sector) => (
+                <button
+                  key={sector.id}
+                  type="button"
+                  className={`admin-list-item${
+                    sector.id === selectedSectorId ? " is-active" : ""
+                  }`}
+                  onClick={() => setSelectedSectorId(sector.id)}
+                >
+                  {sector.name}
+                </button>
+              ))}
+            </div>
+            <div className="admin-form">
+              {selectedSector ? (
+                <>
+                  {!isBaseline ? (
+                    <div className="meta">
+                      Sector data edits are available in baseline mode.
+                    </div>
+                  ) : null}
+                  <label className="field">
+                    Name
+                    <input
+                      type="text"
+                      value={selectedSector.name}
+                      disabled={!isBaseline}
+                      onChange={(event) =>
+                        updateSector(selectedSector.id, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Tags (comma)
+                    <input
+                      type="text"
+                      value={(selectedSector.tags ?? []).join(", ")}
+                      disabled={!isBaseline}
+                      onChange={(event) =>
+                        updateSector(selectedSector.id, {
+                          tags: event.target.value
+                            .split(",")
+                            .map((t) => t.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Polygon (JSON)
+                    <textarea
+                      value={JSON.stringify(selectedSector.polygon ?? [], null, 2)}
+                      disabled={!isBaseline}
+                      onChange={(event) => {
+                        try {
+                          const parsed = JSON.parse(event.target.value);
+                          updateSector(selectedSector.id, { polygon: parsed });
+                        } catch {
+                          // ignore invalid JSON
+                        }
+                      }}
+                    />
+                  </label>
+                </>
+              ) : (
+                <div className="meta">Select a sector to edit.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="card admin-panel">
+          <div className="admin-section-header">
+            <h2>Role definitions</h2>
+          </div>
+          <div className="admin-layout">
+            <div className="admin-list">
+              {((balance as { personnelRoles?: string[] }).personnelRoles ?? []).map(
+                (roleId) => (
+                  <button
+                    key={roleId}
+                    type="button"
+                    className={`admin-list-item${
+                      roleId === selectedRoleDefinitionId ? " is-active" : ""
+                    }`}
+                    onClick={() => setSelectedRoleDefinitionId(roleId)}
+                  >
+                    {roleId}
+                  </button>
+                ),
+              )}
+            </div>
+            <div className="admin-form">
+              {selectedRoleDefinitionId ? (
+                <div className="meta">
+                  <div>
+                    <strong>{selectedRoleDefinitionId}</strong>
+                  </div>
+                  <div className="meta">
+                    Success:{" "}
+                    {(balance as { roleSuccessModifiers?: Record<string, number> })
+                      .roleSuccessModifiers?.[selectedRoleDefinitionId] ?? "—"}
+                  </div>
+                  <div className="meta">
+                    Reward:{" "}
+                    {(balance as { roleRewardModifiers?: Record<string, number> })
+                      .roleRewardModifiers?.[selectedRoleDefinitionId] ?? "—"}
+                  </div>
+                  <div className="meta">
+                    Consume:{" "}
+                    {(balance as { roleConsumeModifiers?: Record<string, number> })
+                      .roleConsumeModifiers?.[selectedRoleDefinitionId] ?? "—"}
+                  </div>
+                </div>
+              ) : (
+                <div className="meta">Select a role to view modifiers.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="card admin-panel">
+          <div className="admin-section-header">
+            <h2>Trait definitions</h2>
+          </div>
+          <div className="admin-layout">
+            <div className="admin-list">
+              <button
+                type="button"
+                className={`admin-list-item${
+                  traitDefinitionTab === "immutable" ? " is-active" : ""
+                }`}
+                onClick={() => setTraitDefinitionTab("immutable")}
+              >
+                Immutable
+              </button>
+              <button
+                type="button"
+                className={`admin-list-item${
+                  traitDefinitionTab === "mutable" ? " is-active" : ""
+                }`}
+                onClick={() => setTraitDefinitionTab("mutable")}
+              >
+                Mutable
+              </button>
+              <button
+                type="button"
+                className={`admin-list-item${
+                  traitDefinitionTab === "class" ? " is-active" : ""
+                }`}
+                onClick={() => setTraitDefinitionTab("class")}
+              >
+                Class
+              </button>
+            </div>
+            <div className="admin-form">
+              {(() => {
+                const bal = balance as {
+                  immutableTraits?: string[];
+                  mutableTraits?: string[];
+                  traitClass?: string[];
+                  traitSuccessModifiers?: Record<string, number>;
+                };
+                const list =
+                  traitDefinitionTab === "immutable"
+                    ? bal.immutableTraits ?? []
+                    : traitDefinitionTab === "mutable"
+                      ? bal.mutableTraits ?? []
+                      : bal.traitClass ?? [];
+                const mods = bal.traitSuccessModifiers ?? {};
+                return (
+                  <>
+                    <div className="meta">
+                      {list.length === 0
+                        ? "No traits"
+                        : list.join(", ")}
+                    </div>
+                    <div className="meta" style={{ marginTop: 8 }}>
+                      <strong>Success modifiers</strong>
+                    </div>
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                      {list.map((traitId) => (
+                        <li key={traitId} className="meta">
+                          {traitId}: {mods[traitId] ?? "—"}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+
+        <div className="card admin-panel">
+          <div className="admin-section-header">
             <h2>Agents</h2>
             <button type="button" onClick={addPersonnel}>
               Add
@@ -801,7 +1217,7 @@ export const AdminApp = () => {
                     />
                   </label>
                   <label className="field">
-                    Skills (comma)
+                    Roles (comma)
                     <input
                       type="text"
                       value={selectedPersonnel.roles.join(", ")}
@@ -815,6 +1231,39 @@ export const AdminApp = () => {
                       }
                     />
                   </label>
+                  {selectedPersonnel.roles.length > 0 ? (
+                    <label className="field">
+                      Role levels
+                      <div className="admin-row" style={{ flexWrap: "wrap", gap: 8 }}>
+                        {selectedPersonnel.roles.map((roleId) => {
+                          const maxLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel ?? 10;
+                          const level = selectedPersonnel.roleLevels?.[roleId as PersonnelRole] ?? 1;
+                          return (
+                            <span key={roleId} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span className="meta">{roleId}:</span>
+                              <select
+                                value={level}
+                                onChange={(event) =>
+                                  updatePersonnel(selectedPersonnel.id, {
+                                    roleLevels: {
+                                      ...selectedPersonnel.roleLevels,
+                                      [roleId]: Number(event.target.value),
+                                    },
+                                  })
+                                }
+                              >
+                                {Array.from({ length: maxLevel }, (_, i) => i + 1).map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </label>
+                  ) : null}
                   <label className="field">
                     Traits (comma)
                     <input

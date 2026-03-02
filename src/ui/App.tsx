@@ -2058,6 +2058,16 @@ export const App = () => {
           </ul>
         )}
       </section>
+
+      <footer className="app-footer">
+        <button
+          type="button"
+          className="inline-link"
+          onClick={() => (window.location.hash = "#/admin")}
+        >
+          Open Admin UI
+        </button>
+      </footer>
     </div>
   );
 };

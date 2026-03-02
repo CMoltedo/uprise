@@ -153,7 +153,6 @@ const MissionReportModal = ({
                   <ul className="event-detail-sublist">
                     {missionEvent.roleGained!.map((g) => {
                       const person = getPersonnel(gameState, g.personnelId);
-                      const level = person?.roleLevels?.[g.roleId] ?? 1;
                       return (
                         <li key={`${g.personnelId}-${g.roleId}`}>
                           <button
@@ -163,7 +162,10 @@ const MissionReportModal = ({
                           >
                             {person?.name ?? g.personnelId}
                           </button>
-                          : {formatRoleLabel(g.roleId)} +1 level (now level {level})
+                          : {formatRoleLabel(g.roleId)}
+                          {g.newLevel != null
+                            ? ` +1 level (now level ${g.newLevel})`
+                            : " gained (new)"}
                         </li>
                       );
                     })}
@@ -262,7 +264,9 @@ const MissionReportModal = ({
                         >
                           {person?.name ?? g.personnelId}
                         </button>{" "}
-                        gained {formatRoleLabel(g.roleId)}
+                        {g.newLevel != null
+                          ? `${formatRoleLabel(g.roleId)} +1 level (now level ${g.newLevel})`
+                          : `gained ${formatRoleLabel(g.roleId)}`}
                       </li>
                     );
                   })}

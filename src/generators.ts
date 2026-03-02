@@ -3,19 +3,30 @@ import balance from "./data/balance.json";
 
 const FIRST_NAMES = [
   "Avery",
+  "Bailey",
   "Cass",
   "Dax",
   "Eris",
   "Finn",
+  "Georgie",
+  "Harold",
+  "Issac",
   "Juno",
   "Kara",
   "Lenn",
   "Mira",
+  "Nick",
   "Orin",
+  "Phoenix",
+  "Quinn",
   "Rhea",
   "Soren",
   "Tali",
+  "Ulric",
   "Vex",
+  "Willow",
+  "Xavier",
+  "Yvaine",
   "Zane",
 ];
 
@@ -25,13 +36,27 @@ const LAST_NAMES = [
   "Corin",
   "Dray",
   "Eldar",
+  "Flynn",
+  "Grimm",
   "Hale",
+  "Indigo",
+  "Jade",
   "Kestrel",
+  "Lyra",
   "Marin",
+  "Nexis",
+  "Orion",
+  "Pyre",
+  "Quill",
   "Rook",
+  "Stryker",
+  "Thayne",
   "Vale",
   "Voss",
   "Wren",
+  "Xi",
+  "Yul",
+  "Zen"
 ];
 
 const ROLES: PersonnelRole[] = (balance.personnelRoles ??
@@ -94,7 +119,17 @@ const buildUniqueId = (prefix: string, existing: Set<string>) => {
   return id;
 };
 
+const MAX_NAME_RETRIES = 15;
+
 const buildUniqueName = (existing: Set<string>) => {
+  for (let attempt = 0; attempt < MAX_NAME_RETRIES; attempt++) {
+    const first = pickOne(FIRST_NAMES);
+    const last = pickOne(LAST_NAMES);
+    const name = `${first} ${last}`;
+    if (!existing.has(name)) {
+      return name;
+    }
+  }
   const first = pickOne(FIRST_NAMES);
   const last = pickOne(LAST_NAMES);
   let name = `${first} ${last}`;

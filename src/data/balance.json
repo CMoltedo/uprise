@@ -151,5 +151,17 @@
   "immutableTraitMinCount": 1,
   "immutableTraitMaxCount": 3,
   "mutableTraitBaseChance": 0.15,
-  "mutableTraitDiminishFactor": 0.15
+  "mutableTraitDiminishFactor": 0.15,
+  "passiveHealHours": 250,
+  "restingAfterSuccessFactor": 0.25,
+  "restingAfterFailureFactor": 0.75,
+  "restingMinHours": 2,
+  "recoveryBaseHours": 48,
+  "recoveryTechFactor": 0.5,
+  "recoveryHealthcareFactor": 0.5,
+  "postMissionLevelChance": 0.03,
+  "maxRoleLevel": 10,
+  "trainingFailurePityDecrement": 1,
+  "trainingDurationMultiplierMin": 4,
+  "trainingDurationMultiplierMax": 8
 }

@@ -397,6 +397,10 @@ ul {
   color: #facc15;
 }
 
+.personnel-status.is-resting {
+  color: #94a3b8;
+}
+
 .personnel-card:active {
   cursor: grabbing;
 }
@@ -1205,4 +1209,10 @@ button:hover {
 
 .inline-link:hover {
   color: #dbeafe;
+}
+
+.app-footer {
+  margin-top: 24px;
+  padding: 12px 0;
+  border-top: 1px solid #30363d;
 }

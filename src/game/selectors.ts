@@ -52,6 +52,9 @@ export const getPersonnelStatusMeta = (person: Personnel) => {
   if (person.status === "assigned" || person.status === "traveling") {
     return { label: "on mission", className: "is-mission" };
   }
+  if (person.status === "resting") {
+    return { label: "resting", className: "is-resting" };
+  }
   return { label: "idle", className: "is-idle" };
 };
 
@@ -59,6 +62,7 @@ export const getPersonnelOptionStyle = (person: Personnel) => {
   const isUnavailable =
     person.status === "wounded" ||
     person.status === "assigned" ||
-    person.status === "traveling";
+    person.status === "traveling" ||
+    person.status === "resting";
   return isUnavailable ? { color: "#6b7280" } : undefined;
 };

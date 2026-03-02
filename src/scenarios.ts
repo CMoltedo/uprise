@@ -72,6 +72,42 @@ const mergeById = <T extends WithId>(
   return Array.from(map.values());
 };
 
+/** Merge personnel overrides, resolving partial overrides from data.heroes when missing from starting list. */
+const mergePersonnel = (
+  startingPersonnel: Personnel[],
+  overrides: Array<PartialWithId<Personnel>> | undefined,
+  baseline: GameState,
+): Personnel[] => {
+  if (!overrides || overrides.length === 0) {
+    return startingPersonnel;
+  }
+  const map = new Map(startingPersonnel.map((p) => [p.id, p]));
+  const heroes = baseline.data.heroes ?? [];
+  const hqId = baseline.runtime.headquartersId ?? baseline.data.locations?.[0]?.id ?? "";
+  for (const override of overrides) {
+    const existing = map.get(override.id);
+    if (existing) {
+      map.set(override.id, { ...existing, ...override });
+    } else {
+      const fromHero = heroes.find((h) => h.id === override.id);
+      const base: Personnel = fromHero
+        ? {
+            ...fromHero,
+            locationId: fromHero.locationId ?? hqId,
+          }
+        : {
+            id: override.id,
+            name: override.name ?? "Unknown",
+            roles: override.roles ?? [],
+            status: override.status ?? "idle",
+            locationId: override.locationId ?? hqId,
+          };
+      map.set(override.id, { ...base, ...override });
+    }
+  }
+  return Array.from(map.values());
+};
+
 const mergeLocation = (
   current: Location,
   override: PartialWithId<Location>,
@@ -230,10 +266,10 @@ export const buildScenario = (
         ...baseline.runtime.resources,
         ...overrides.runtime?.resources,
       },
-      personnel: mergeById(
+      personnel: mergePersonnel(
         startingPersonnel,
         overrides.runtime?.personnel,
-        (current, override) => ({ ...current, ...override }),
+        { data: baseData, runtime: baseline.runtime },
       ),
       materials: mergeById(
         baseline.runtime.materials,

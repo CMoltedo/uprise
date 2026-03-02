@@ -202,6 +202,34 @@ const applyRewardModifier = (
 export const getLocation = (state: GameState, locationId: string) =>
   state.data.locations.find((location) => location.id === locationId);
 
+/** Recovery mission duration in hours from location tech and healthcare; higher = faster healing. */
+export const getRecoveryDurationHours = (state: GameState, locationId: string): number => {
+  if (locationId === "galaxy") {
+    return (balance as { recoveryBaseHours?: number }).recoveryBaseHours ?? 48;
+  }
+  const location = getLocation(state, locationId);
+  if (!location) {
+    return (balance as { recoveryBaseHours?: number }).recoveryBaseHours ?? 48;
+  }
+  const base = (balance as { recoveryBaseHours?: number }).recoveryBaseHours ?? 48;
+  const techFactor = (balance as { recoveryTechFactor?: number }).recoveryTechFactor ?? 0.5;
+  const healthFactor = (balance as { recoveryHealthcareFactor?: number }).recoveryHealthcareFactor ?? 0.5;
+  const { techLevel, healthcareFacilities } = location.attributes;
+  const scale = 100 / (100 + techFactor * techLevel + healthFactor * healthcareFacilities);
+  return Math.max(1, Math.round(base * scale));
+};
+
+/** Min and max duration in hours for a training plan (base duration × multiplier range). */
+export const getTrainingDurationRange = (plan: MissionPlan): { minHours: number; maxHours: number } => {
+  const base = plan.durationHours;
+  const minMult = (balance as { trainingDurationMultiplierMin?: number }).trainingDurationMultiplierMin ?? 4;
+  const maxMult = (balance as { trainingDurationMultiplierMax?: number }).trainingDurationMultiplierMax ?? 8;
+  return {
+    minHours: Math.round(base * minMult),
+    maxHours: Math.round(base * maxMult),
+  };
+};
+
 export const getLocationTruth = (state: GameState, locationId: string): LocationTruth => {
   const stored = state.runtime.locationTruth?.[locationId];
   if (stored) {
@@ -561,6 +589,29 @@ export const validateAssignment = (
     errors.push("No personnel selected");
     return errors;
   }
+
+  if (plan.type === "recovery") {
+    if (personnel.length !== 1) {
+      errors.push("Recovery requires exactly one agent.");
+      return errors;
+    }
+    if (personnel[0].status !== "wounded") {
+      errors.push("Only wounded agents can be assigned to Recovery.");
+      return errors;
+    }
+    const targetLocationId = locationId ?? personnel[0].locationId;
+    if (!targetLocationId || targetLocationId === "galaxy") {
+      errors.push("Select a location where the agent will receive care.");
+      return errors;
+    }
+    const location = getLocation(state, targetLocationId);
+    if (!location) {
+      errors.push("Recovery location not found.");
+      return errors;
+    }
+    return errors;
+  }
+
   const isGlobal = plan.availability?.type === "global";
   const targetLocationId = locationId ?? personnel[0].locationId;
   if (!isGlobal) {
@@ -655,26 +706,39 @@ export const assignPersonnelToMission = (
   }
 
   const targetLocationId =
-    plan.availability?.type === "global"
-      ? "galaxy"
-      : locationId ?? personnel[0].locationId;
+    plan.type === "recovery"
+      ? (locationId ?? personnel[0].locationId)
+      : plan.availability?.type === "global"
+        ? "galaxy"
+        : locationId ?? personnel[0].locationId;
   const errors = validateAssignment(state, plan, personnel, targetLocationId);
   if (errors.length > 0) {
     throw new Error(errors.join("; "));
   }
 
+  const remainingHours =
+    plan.type === "recovery"
+      ? getRecoveryDurationHours(state, targetLocationId)
+      : plan.type === "training"
+        ? (() => {
+            const minMult = (balance as { trainingDurationMultiplierMin?: number }).trainingDurationMultiplierMin ?? 4;
+            const maxMult = (balance as { trainingDurationMultiplierMax?: number }).trainingDurationMultiplierMax ?? 8;
+            const multiplier = minMult + Math.random() * (maxMult - minMult);
+            return Math.round(plan.durationHours * multiplier);
+          })()
+        : plan.durationHours;
   const mission: MissionInstance = {
     id: `mission-${Date.now()}`,
     planId: plan.id,
     locationId: targetLocationId,
     assignedPersonnelIds: personnelIds,
     status: "active",
-    remainingHours: plan.durationHours,
+    remainingHours,
     startedAtHours: state.runtime.nowHours,
   };
 
   const offerToConsume =
-    plan.availability?.type === "global"
+    plan.type === "recovery" || plan.availability?.type === "global"
       ? null
       : getActiveOffer(state, plan.id, targetLocationId);
 
@@ -765,6 +829,42 @@ const resolveMission = (
     return state;
   }
 
+  if (plan.type === "recovery") {
+    const updatedPersonnel = state.runtime.personnel.map((person) =>
+      mission.assignedPersonnelIds.includes(person.id)
+        ? { ...person, status: "idle" as const }
+        : person,
+    );
+    const updatedMission: MissionInstance = {
+      ...mission,
+      status: "resolved",
+      remainingHours: 0,
+    };
+    const event: MissionEvent = {
+      id: `event-${Date.now()}`,
+      kind: "mission",
+      missionId: mission.id,
+      planId: mission.planId,
+      status: "resolved",
+      resolvedAtHours: state.runtime.nowHours,
+      success: true,
+      personnelIds: [...mission.assignedPersonnelIds],
+      rewardsApplied: {},
+      locationId: mission.locationId,
+    };
+    return {
+      ...state,
+      runtime: {
+        ...state.runtime,
+        personnel: updatedPersonnel,
+        missions: state.runtime.missions.map((item) =>
+          item.id === mission.id ? updatedMission : item,
+        ),
+        eventLog: [...state.runtime.eventLog, event],
+      },
+    };
+  }
+
   const assignedPersonnel = state.runtime.personnel.filter((person) =>
     mission.assignedPersonnelIds.includes(person.id),
   );
@@ -784,16 +884,33 @@ const resolveMission = (
   );
 
   const injuryChance = balance.missionFailureInjuryChance ?? 0.05;
-  const nextStatus: PersonnelStatus =
-    success || Math.random() > injuryChance ? "idle" : "wounded";
+  const injured = !success && Math.random() <= injuryChance;
+  const nowHours = state.runtime.nowHours;
+  const restingMinHours = (balance as { restingMinHours?: number }).restingMinHours ?? 2;
+  const successFactor = (balance as { restingAfterSuccessFactor?: number }).restingAfterSuccessFactor ?? 0.25;
+  const failureFactor = (balance as { restingAfterFailureFactor?: number }).restingAfterFailureFactor ?? 0.75;
+  const restHours = injured
+    ? 0
+    : Math.max(
+        restingMinHours,
+        plan.durationHours * (success ? successFactor : failureFactor),
+      );
+  const nextStatus: PersonnelStatus = injured ? "wounded" : "resting";
   const updatedPersonnel = state.runtime.personnel.map((person) => {
     if (!mission.assignedPersonnelIds.includes(person.id)) {
       return person;
     }
-
+    if (injured) {
+      return {
+        ...person,
+        status: "wounded" as const,
+        woundedAtHours: nowHours,
+      };
+    }
     return {
       ...person,
-      status: nextStatus,
+      status: "resting" as const,
+      restingUntilHours: nowHours + restHours,
     };
   });
 
@@ -832,13 +949,32 @@ const resolveMission = (
     intelReport = { summary, keys: plan.intelRewards.keys };
   }
 
-  const roleGained: Array<{ personnelId: string; roleId: string }> = [];
+  const roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> = [];
   let personnelAfterRoleGains = stateAfterRewards.runtime.personnel;
   let trainingAttemptsWithoutGain: Record<string, Record<string, number>> = {
     ...(state.runtime.trainingAttemptsWithoutGain ?? {}),
   };
 
   if (success) {
+    const maxRoleLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel;
+    const postLevelChance = (balance as { postMissionLevelChance?: number }).postMissionLevelChance ?? 0.03;
+
+    for (const personnelId of mission.assignedPersonnelIds) {
+      const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
+      if (!person || person.roles.length === 0) continue;
+      if (Math.random() >= postLevelChance) continue;
+      const roleId = person.roles[Math.floor(Math.random() * person.roles.length)] as PersonnelRole;
+      const currentLevel = person.roleLevels?.[roleId] ?? 1;
+      if (maxRoleLevel != null && currentLevel >= maxRoleLevel) continue;
+      const newLevel = currentLevel + 1;
+      personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
+        p.id !== personnelId
+          ? p
+          : { ...p, roleLevels: { ...p.roleLevels, [roleId]: newLevel } },
+      );
+      roleGained.push({ personnelId, roleId, newLevel });
+    }
+
     const postChance = (balance as { postMissionRoleChance?: number }).postMissionRoleChance ?? 0.02;
     for (const personnelId of mission.assignedPersonnelIds) {
       const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
@@ -862,45 +998,108 @@ const resolveMission = (
     }
 
     if (plan.type === "training" && plan.trainingReward) {
-      const roleId = plan.trainingReward.roleId;
+      const roleId = plan.trainingReward.roleId as PersonnelRole;
       const baseChance = (balance as { trainingBaseRoleChance?: number }).trainingBaseRoleChance ?? 0.12;
       const increment = (balance as { trainingRoleChanceIncrementPerAttempt?: number }).trainingRoleChanceIncrementPerAttempt ?? 0.08;
+      const maxRoleLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel;
+
       for (const personnelId of mission.assignedPersonnelIds) {
         const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
-        if (!person || person.roles.includes(roleId)) continue;
-        if (person.roles.length >= MAX_PERSONNEL_ROLES) continue;
+        if (!person) continue;
+
         const attempts =
           trainingAttemptsWithoutGain[personnelId]?.[plan.id] ?? 0;
         const chance = Math.min(
           1,
           baseChance + attempts * increment,
         );
-        if (Math.random() < chance) {
-          personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
-            p.id !== personnelId
-              ? p
-              : {
-                  ...p,
-                  roles: [...p.roles, roleId],
-                  roleLevels: { ...p.roleLevels, [roleId]: 1 },
-                },
-          );
-          roleGained.push({ personnelId, roleId });
-          const next = { ...(trainingAttemptsWithoutGain[personnelId] ?? {}) };
-          delete next[plan.id];
-          trainingAttemptsWithoutGain = {
-            ...trainingAttemptsWithoutGain,
-            [personnelId]: next,
-          };
+        const roll = Math.random();
+
+        if (person.roles.includes(roleId)) {
+          const currentLevel = person.roleLevels?.[roleId] ?? 1;
+          if (maxRoleLevel != null && currentLevel >= maxRoleLevel) continue;
+          if (roll < chance) {
+            const newLevel = currentLevel + 1;
+            personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
+              p.id !== personnelId
+                ? p
+                : { ...p, roleLevels: { ...p.roleLevels, [roleId]: newLevel } },
+            );
+            roleGained.push({ personnelId, roleId, newLevel });
+            const next = { ...(trainingAttemptsWithoutGain[personnelId] ?? {}) };
+            delete next[plan.id];
+            trainingAttemptsWithoutGain = {
+              ...trainingAttemptsWithoutGain,
+              [personnelId]: next,
+            };
+          } else {
+            trainingAttemptsWithoutGain = {
+              ...trainingAttemptsWithoutGain,
+              [personnelId]: {
+                ...(trainingAttemptsWithoutGain[personnelId] ?? {}),
+                [plan.id]: attempts + 1,
+              },
+            };
+          }
+        } else {
+          if (person.roles.length >= MAX_PERSONNEL_ROLES) continue;
+          if (roll < chance) {
+            personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
+              p.id !== personnelId
+                ? p
+                : {
+                    ...p,
+                    roles: [...p.roles, roleId],
+                    roleLevels: { ...p.roleLevels, [roleId]: 1 },
+                  },
+            );
+            roleGained.push({ personnelId, roleId });
+            const next = { ...(trainingAttemptsWithoutGain[personnelId] ?? {}) };
+            delete next[plan.id];
+            trainingAttemptsWithoutGain = {
+              ...trainingAttemptsWithoutGain,
+              [personnelId]: next,
+            };
+          } else {
+            trainingAttemptsWithoutGain = {
+              ...trainingAttemptsWithoutGain,
+              [personnelId]: {
+                ...(trainingAttemptsWithoutGain[personnelId] ?? {}),
+                [plan.id]: attempts + 1,
+              },
+            };
+          }
+        }
+      }
+    }
+  }
+
+  if (!success && plan.type === "training" && plan.trainingReward) {
+    const decrement = (balance as { trainingFailurePityDecrement?: number }).trainingFailurePityDecrement ?? 1;
+    for (const personnelId of mission.assignedPersonnelIds) {
+      const current = trainingAttemptsWithoutGain[personnelId]?.[plan.id] ?? 0;
+      const next = Math.max(0, current - decrement);
+      if (next === 0) {
+        const copy = { ...(trainingAttemptsWithoutGain[personnelId] ?? {}) };
+        delete copy[plan.id];
+        if (Object.keys(copy).length === 0) {
+          const nextMap = { ...trainingAttemptsWithoutGain };
+          delete nextMap[personnelId];
+          trainingAttemptsWithoutGain = nextMap;
         } else {
           trainingAttemptsWithoutGain = {
             ...trainingAttemptsWithoutGain,
-            [personnelId]: {
-              ...(trainingAttemptsWithoutGain[personnelId] ?? {}),
-              [plan.id]: attempts + 1,
-            },
+            [personnelId]: copy,
           };
         }
+      } else {
+        trainingAttemptsWithoutGain = {
+          ...trainingAttemptsWithoutGain,
+          [personnelId]: {
+            ...(trainingAttemptsWithoutGain[personnelId] ?? {}),
+            [plan.id]: next,
+          },
+        };
       }
     }
   }
@@ -1169,6 +1368,55 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
       }
     }
   }
+
+  const passiveHealHours = (balance as { passiveHealHours?: number }).passiveHealHours ?? 250;
+  const nowHours = nextState.runtime.nowHours;
+  const personnelAfterPassiveHeal = nextState.runtime.personnel.map((person) => {
+    if (person.status !== "wounded") return person;
+    const woundedAt = person.woundedAtHours ?? nowHours;
+    if (nowHours - woundedAt >= passiveHealHours) {
+      const { woundedAtHours: _, ...rest } = person;
+      return { ...rest, status: "idle" as const };
+    }
+    return { ...person, woundedAtHours: woundedAt };
+  });
+  if (
+    personnelAfterPassiveHeal.some(
+      (p, i) => p !== nextState.runtime.personnel[i],
+    )
+  ) {
+    nextState = {
+      ...nextState,
+      runtime: {
+        ...nextState.runtime,
+        personnel: personnelAfterPassiveHeal,
+      },
+    };
+  }
+
+  const personnelAfterRest = nextState.runtime.personnel.map((person) => {
+    if (person.status !== "resting") return person;
+    const until = person.restingUntilHours ?? nowHours;
+    if (nowHours >= until) {
+      const { restingUntilHours: _, ...rest } = person;
+      return { ...rest, status: "idle" as const };
+    }
+    return person;
+  });
+  if (
+    personnelAfterRest.some(
+      (p, i) => p !== nextState.runtime.personnel[i],
+    )
+  ) {
+    nextState = {
+      ...nextState,
+      runtime: {
+        ...nextState.runtime,
+        personnel: personnelAfterRest,
+      },
+    };
+  }
+
   return updateMissionOffers(nextState);
 };
 

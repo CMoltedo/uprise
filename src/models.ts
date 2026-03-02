@@ -12,7 +12,8 @@ export type PersonnelStatus =
   | "assigned"
   | "traveling"
   | "wounded"
-  | "captured";
+  | "captured"
+  | "resting";
 
 export type MissionStatus = "planned" | "active" | "resolved" | "failed";
 export type MissionType =
@@ -20,7 +21,8 @@ export type MissionType =
   | "gather-materials"
   | "recruit-allies"
   | "espionage"
-  | "training";
+  | "training"
+  | "recovery";
 
 export type IntelQuality = "low" | "med" | "high";
 
@@ -55,6 +57,10 @@ export interface Personnel {
   mutableTraits?: string[];
   status: PersonnelStatus;
   locationId: string;
+  /** Set when status becomes wounded; used for passive healing. */
+  woundedAtHours?: number;
+  /** Set when status becomes resting; cleared when transitioning to idle. */
+  restingUntilHours?: number;
   roleLevels?: Partial<Record<PersonnelRole, number>>;
 }
 
@@ -190,7 +196,7 @@ export interface MissionEvent {
   rewardsApplied: MissionRewardBundle;
   locationId: string;
   intelReport?: { summary: string; keys: string[] };
-  roleGained?: Array<{ personnelId: string; roleId: string }>;
+  roleGained?: Array<{ personnelId: string; roleId: string; newLevel?: number }>;
   traitGained?: Array<{ personnelId: string; traitId: string }>;
   /** For successful recruit-allies missions: ids of newly recruited personnel. */
   recruitedPersonnelIds?: string[];
