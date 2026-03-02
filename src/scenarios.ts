@@ -83,7 +83,11 @@ const mergePersonnel = (
   }
   const map = new Map(startingPersonnel.map((p) => [p.id, p]));
   const heroes = baseline.data.heroes ?? [];
-  const hqId = baseline.runtime.headquartersId ?? baseline.data.locations?.[0]?.id ?? "";
+  const firstEnabledId =
+    (baseline.data.locations as Location[] | undefined)?.find((l) => !l.disabled)?.id ??
+    baseline.data.locations?.[0]?.id ??
+    "";
+  const hqId = baseline.runtime.headquartersId ?? firstEnabledId;
   for (const override of overrides) {
     const existing = map.get(override.id);
     if (existing) {
@@ -137,7 +141,7 @@ const buildStartingPersonnel = (baseline: GameState): Personnel[] => {
     heroPool.length,
     3 + Math.floor(Math.random() * 3),
   );
-  const selectedHeroes = shuffle(heroPool)
+    const selectedHeroes = shuffle(heroPool)
     .slice(0, heroCount)
     .map((hero) => ({
       ...hero,
@@ -145,7 +149,8 @@ const buildStartingPersonnel = (baseline: GameState): Personnel[] => {
       locationId:
         hero.locationId ??
         baseline.runtime.headquartersId ??
-        baseline.data.locations[0]?.id ??
+        (baseline.data.locations as Location[] | undefined)?.find((l) => !l.disabled)?.id ??
+        baseline.data.locations?.[0]?.id ??
         "",
     }));
   const randomCount = 4;

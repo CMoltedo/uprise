@@ -1,5 +1,6 @@
 import type {
   GameState,
+  Location,
   MaterialCatalogItem,
   MaterialItem,
   MissionEvent,
@@ -19,6 +20,7 @@ import type {
   LocationTruth,
   IntelSnapshot,
   IntelQuality,
+  PlayerKnowledge,
 } from "./models.js";
 import { generatePersonnel } from "./generators.js";
 import balance from "./data/balance.json";
@@ -202,6 +204,12 @@ const applyRewardModifier = (
 export const getLocation = (state: GameState, locationId: string) =>
   state.data.locations.find((location) => location.id === locationId);
 
+/** True when location exists and has disabled === true. Used to exclude from offers and UI. */
+export const isLocationDisabled = (state: GameState, locationId: string): boolean => {
+  const loc = getLocation(state, locationId);
+  return loc?.disabled === true;
+};
+
 /** Recovery mission duration in hours from location tech and healthcare; higher = faster healing. */
 export const getRecoveryDurationHours = (state: GameState, locationId: string): number => {
   if (locationId === "galaxy") {
@@ -255,6 +263,16 @@ export const getLocationTruth = (state: GameState, locationId: string): Location
     enemyMissions: [],
     specialHooks: [],
   };
+};
+
+/** Planetary popular support: average of popularSupport across enabled locations on the planet. Returns 0 if planet has no enabled locations. */
+export const getPlanetPopularSupport = (state: GameState, planetId: string): number => {
+  const locations = state.data.locations.filter(
+    (loc) => loc.planetId === planetId && !loc.disabled,
+  );
+  if (locations.length === 0) return 0;
+  const sum = locations.reduce((acc, loc) => acc + loc.attributes.popularSupport, 0);
+  return sum / locations.length;
 };
 
 export type IntelDisplayStatus = "unknown" | "known" | "stale";
@@ -467,6 +485,78 @@ const applyRecruitRewards = (
   return workingState;
 };
 
+const LOCATION_ATTRIBUTE_KEYS: (keyof Location["attributes"])[] = [
+  "resistance",
+  "healthcareFacilities",
+  "techLevel",
+  "populationDensity",
+  "customsScrutiny",
+  "patrolFrequency",
+  "garrisonStrength",
+  "popularSupport",
+];
+
+/** Apply location attribute deltas at a location; update knowledge for each changed key. Returns null if no-op. */
+function applyLocationAttributeDeltas(
+  state: GameState,
+  locationId: string,
+  deltas: Partial<Record<keyof Location["attributes"], number>>,
+  nowHours: number,
+): {
+  nextLocations: Location[];
+  nextKnowledge: PlayerKnowledge;
+  appliedLocationAttributes: Partial<Record<keyof Location["attributes"], number>>;
+  locationAttributeChanges: Partial<Record<keyof Location["attributes"], { before: number; after: number }>>;
+} | null {
+  if (locationId === "galaxy" || !deltas || Object.keys(deltas).length === 0) {
+    return null;
+  }
+  const location = getLocation(state, locationId);
+  if (!location) return null;
+
+  const attrs = { ...location.attributes };
+  const applied: Partial<Record<keyof Location["attributes"], number>> = {};
+  const changes: Partial<Record<keyof Location["attributes"], { before: number; after: number }>> = {};
+  for (const key of LOCATION_ATTRIBUTE_KEYS) {
+    const delta = deltas[key];
+    if (delta === undefined) continue;
+    const current = attrs[key];
+    if (typeof current !== "number") continue;
+    const next = Math.max(0, Math.min(100, current + delta));
+    attrs[key] = next;
+    applied[key] = delta;
+    changes[key] = { before: current, after: next };
+  }
+  if (Object.keys(applied).length === 0) return null;
+
+  const nextLocations = state.data.locations.map((loc) =>
+    loc.id === locationId ? { ...loc, attributes: attrs } : loc,
+  );
+
+  const byLocation = state.runtime.knowledge?.byLocation ?? {};
+  const locKnowledge = { ...(byLocation[locationId] ?? {}) };
+  for (const key of Object.keys(applied) as (keyof Location["attributes"])[]) {
+    locKnowledge[key] = {
+      observedAtHours: nowHours,
+      value: attrs[key],
+      quality: "high",
+    };
+  }
+  const nextKnowledge: PlayerKnowledge = {
+    byLocation: {
+      ...byLocation,
+      [locationId]: locKnowledge,
+    },
+  };
+
+  return {
+    nextLocations,
+    nextKnowledge,
+    appliedLocationAttributes: applied,
+    locationAttributeChanges: changes,
+  };
+}
+
 const getTruthValueByKey = (truth: LocationTruth, key: string): number | string[] => {
   switch (key) {
     case "garrisonStrength":
@@ -587,6 +677,10 @@ export const validateAssignment = (
   const errors: string[] = [];
   if (personnel.length === 0) {
     errors.push("No personnel selected");
+    return errors;
+  }
+  if (locationId && isLocationDisabled(state, locationId)) {
+    errors.push("That location is not available for missions.");
     return errors;
   }
 
@@ -786,6 +880,9 @@ export const assignTravel = (
   if (person.locationId === toLocationId) {
     throw new Error(`${person.name} is already at ${toLocationId}`);
   }
+  if (isLocationDisabled(state, toLocationId)) {
+    throw new Error("That location is not available for travel.");
+  }
 
   const travel: TravelAssignment = {
     id: `travel-${Date.now()}`,
@@ -921,6 +1018,8 @@ const resolveMission = (
   };
 
   let intelReport: { summary: string; keys: string[] } | undefined;
+  let appliedLocationAttributes: Partial<Record<keyof Location["attributes"], number>> | undefined;
+  let locationAttributeChanges: Partial<Record<keyof Location["attributes"], { before: number; after: number }>> | undefined;
   let stateAfterRewards: GameState = {
     ...state,
     runtime: {
@@ -933,6 +1032,30 @@ const resolveMission = (
       ),
     },
   };
+  if (
+    mission.locationId !== "galaxy" &&
+    rewardBundle?.locationAttributes &&
+    Object.keys(rewardBundle.locationAttributes).length > 0
+  ) {
+    const locResult = applyLocationAttributeDeltas(
+      state,
+      mission.locationId,
+      rewardBundle.locationAttributes,
+      nowHours,
+    );
+    if (locResult) {
+      appliedLocationAttributes = locResult.appliedLocationAttributes;
+      locationAttributeChanges = locResult.locationAttributeChanges;
+      stateAfterRewards = {
+        ...stateAfterRewards,
+        data: { ...stateAfterRewards.data, locations: locResult.nextLocations },
+        runtime: {
+          ...stateAfterRewards.runtime,
+          knowledge: locResult.nextKnowledge,
+        },
+      };
+    }
+  }
   if (
     success &&
     plan.intelRewards &&
@@ -1196,7 +1319,16 @@ const resolveMission = (
     resolvedAtHours: state.runtime.nowHours,
     success,
     personnelIds: [...mission.assignedPersonnelIds],
-    rewardsApplied: rewardResult.applied,
+    rewardsApplied:
+      appliedLocationAttributes != null && Object.keys(appliedLocationAttributes).length > 0
+        ? {
+            ...rewardResult.applied,
+            locationAttributes: appliedLocationAttributes,
+            ...(locationAttributeChanges && Object.keys(locationAttributeChanges).length > 0
+              ? { locationAttributeChanges }
+              : {}),
+          }
+        : rewardResult.applied,
     locationId: mission.locationId,
     ...(intelReport && { intelReport }),
     ...(roleGained.length > 0 && { roleGained }),
@@ -1229,6 +1361,9 @@ const updateMissionOffers = (state: GameState): GameState => {
   for (const assignment of state.data.locationAssignments) {
     const plan = getMissionPlan(state, assignment.planId);
     if (!plan) {
+      continue;
+    }
+    if (isLocationDisabled(state, assignment.locationId)) {
       continue;
     }
     if (!isPlanInTimeWindow(state, plan)) {

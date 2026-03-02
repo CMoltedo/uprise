@@ -9,6 +9,17 @@ import { getMissionPlan, getPersonnel } from "../../engine.js";
 const formatRoleLabel = (roleId: string) =>
   roleId.charAt(0).toUpperCase() + roleId.slice(1);
 
+const LOCATION_ATTR_LABELS: Record<string, string> = {
+  resistance: "Resistance",
+  healthcareFacilities: "Healthcare",
+  techLevel: "Tech level",
+  populationDensity: "Population density",
+  customsScrutiny: "Customs",
+  patrolFrequency: "Patrols",
+  garrisonStrength: "Garrison",
+  popularSupport: "Popular support",
+};
+
 type EventDetailModalProps = {
   event: EventLogEntry | null;
   gameState: GameState;
@@ -178,7 +189,9 @@ const MissionReportModal = ({
               rewardsApplied &&
               (rewardsApplied.currency ||
                 (rewardsApplied.items && rewardsApplied.items.length > 0) ||
-                (rewardsApplied.effects && rewardsApplied.effects.length > 0)) ? (
+                (rewardsApplied.effects && rewardsApplied.effects.length > 0) ||
+                (rewardsApplied.locationAttributes &&
+                  Object.keys(rewardsApplied.locationAttributes).length > 0)) ? (
                 <div className="meta">
                   <strong>Outcome:</strong>
                   {rewardsApplied.currency &&
@@ -214,6 +227,39 @@ const MissionReportModal = ({
                         <li key={`${effect.type}-${i}`}>{effect.type}</li>
                       ))}
                     </ul>
+                  ) : null}
+                  {rewardsApplied.locationAttributes &&
+                  Object.keys(rewardsApplied.locationAttributes).length > 0 ? (
+                    <div className="event-detail-rewards">
+                      {rewardsApplied.locationAttributeChanges &&
+                      Object.keys(rewardsApplied.locationAttributeChanges).length > 0 ? (
+                        <>
+                          <div className="meta">Location changes:</div>
+                          {Object.entries(rewardsApplied.locationAttributeChanges).map(
+                            ([key, change]) => {
+                              const label = LOCATION_ATTR_LABELS[key] ?? key;
+                              const delta = rewardsApplied.locationAttributes?.[key as keyof typeof rewardsApplied.locationAttributes];
+                              return (
+                                <div key={key} className="event-detail-location-attr">
+                                  {label}: {change.before} → {change.after}
+                                  {delta !== undefined ? ` (${delta >= 0 ? "+" : ""}${delta})` : ""}
+                                </div>
+                              );
+                            },
+                          )}
+                        </>
+                      ) : (
+                        <span>
+                          Location:{" "}
+                          {Object.entries(rewardsApplied.locationAttributes)
+                            .map(
+                              ([key, delta]) =>
+                                `${LOCATION_ATTR_LABELS[key] ?? key} ${delta >= 0 ? "+" : ""}${delta}`,
+                            )
+                            .join(", ")}
+                        </span>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               ) : null

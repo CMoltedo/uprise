@@ -414,6 +414,10 @@ ul {
   cursor: not-allowed;
 }
 
+.personnel-card.can-assign-to-mission {
+  border-left: 3px solid #22c55e;
+}
+
 .mission-drop-list {
   display: flex;
   flex-direction: column;

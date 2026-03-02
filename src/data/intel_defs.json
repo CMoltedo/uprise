@@ -23,6 +23,26 @@
     "specialHooks": {
       "staleAfterHours": 48,
       "rangePadByQuality": {}
+    },
+    "resistance": {
+      "staleAfterHours": 24,
+      "rangePadByQuality": {}
+    },
+    "healthcareFacilities": {
+      "staleAfterHours": 48,
+      "rangePadByQuality": {}
+    },
+    "techLevel": {
+      "staleAfterHours": 72,
+      "rangePadByQuality": {}
+    },
+    "populationDensity": {
+      "staleAfterHours": 48,
+      "rangePadByQuality": {}
+    },
+    "popularSupport": {
+      "staleAfterHours": 24,
+      "rangePadByQuality": {}
     }
   }
 }

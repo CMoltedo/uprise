@@ -283,6 +283,7 @@ export const AdminApp = () => {
         customsScrutiny: 50,
         patrolFrequency: 50,
         garrisonStrength: 50,
+        popularSupport: 50,
       },
     };
     setState((prev) => ({
@@ -847,6 +848,22 @@ export const AdminApp = () => {
                             attributes: {
                               ...selectedLocation.attributes,
                               garrisonStrength: Number(event.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Popular support
+                      <input
+                        type="number"
+                        value={selectedLocation.attributes.popularSupport}
+                        disabled={!isBaseline}
+                        onChange={(event) =>
+                          updateLocation(selectedLocation.id, {
+                            attributes: {
+                              ...selectedLocation.attributes,
+                              popularSupport: Number(event.target.value),
                             },
                           })
                         }

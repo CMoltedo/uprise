@@ -85,6 +85,8 @@ export interface Location {
   tags: string[];
   planetId: string;
   position: { x: number; y: number };
+  /** When true, location is excluded from mission offers, travel destinations, and selection (for testing). */
+  disabled?: boolean;
   attributes: {
     resistance: number;
     healthcareFacilities: number;
@@ -93,6 +95,7 @@ export interface Location {
     customsScrutiny: number;
     patrolFrequency: number;
     garrisonStrength: number;
+    popularSupport: number;
   };
 }
 
@@ -129,6 +132,9 @@ export interface MissionRewardBundle {
   currency?: Partial<ResourceBundle>;
   items?: MissionRewardItem[];
   effects?: MissionRewardEffect[];
+  locationAttributes?: Partial<Record<keyof Location["attributes"], number>>;
+  /** When location attributes were applied, the prior and new value per attribute (for mission report). */
+  locationAttributeChanges?: Partial<Record<keyof Location["attributes"], { before: number; after: number }>>;
 }
 
 export type MissionAvailability =

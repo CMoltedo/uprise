@@ -155,6 +155,7 @@ export const generatePersonnel = (
   const locationId =
     options?.locationId ??
     state.runtime.headquartersId ??
+    state.data.locations.find((l) => !l.disabled)?.id ??
     state.data.locations[0]?.id ??
     "";
 

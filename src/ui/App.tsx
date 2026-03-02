@@ -4,7 +4,9 @@ import {
   assignTravel,
   canPersonnelBeAssignedToTrainingPlan,
   getIntelDisplay,
+  getLocation,
   getMissionSuccessChance,
+  getPlanetPopularSupport,
   getTraitsForPerson,
   validateAssignment,
 } from "../engine.js";
@@ -56,9 +58,10 @@ export const App = () => {
   const [selectedPlanetId, setSelectedPlanetId] = useState<string>(
     initialScenario.data.planets[0]?.id ?? "",
   );
-  const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    initialScenario.data.locations[0]?.id ?? "",
-  );
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(() => {
+    const locs = initialScenario.data.locations as { id: string; disabled?: boolean }[];
+    return locs?.find((l) => !l.disabled)?.id ?? locs?.[0]?.id ?? "";
+  });
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     initialScenario.data.missionPlans[0]?.id ?? "",
   );
@@ -67,9 +70,10 @@ export const App = () => {
   const [travelPersonnelId, setTravelPersonnelId] = useState<string>(
     initialScenario.runtime.personnel[0]?.id ?? "",
   );
-  const [travelDestinationId, setTravelDestinationId] = useState<string>(
-    initialScenario.data.locations[0]?.id ?? "",
-  );
+  const [travelDestinationId, setTravelDestinationId] = useState<string>(() => {
+    const locs = initialScenario.data.locations as { id: string; disabled?: boolean }[];
+    return locs?.find((l) => !l.disabled)?.id ?? locs?.[0]?.id ?? "";
+  });
   const [travelHours, setTravelHours] = useState<number>(12);
 
   const [dragPlanId, setDragPlanId] = useState<string | null>(null);
@@ -97,6 +101,10 @@ export const App = () => {
   const flashPersonnelTimeoutRef = useRef<number | null>(null);
 
   const locationById = useMemo(() => buildIdMap(data.locations), [data.locations]);
+  const enabledLocations = useMemo(
+    () => data.locations.filter((loc) => !loc.disabled),
+    [data.locations],
+  );
   const sectorById = useMemo(() => buildIdMap(data.sectors), [data.sectors]);
   const planetById = useMemo(() => buildIdMap(data.planets), [data.planets]);
   const planById = useMemo(() => buildIdMap(data.missionPlans), [data.missionPlans]);
@@ -111,11 +119,22 @@ export const App = () => {
   );
   const formatIntel = (
     locationId: string,
-    key: "customsScrutiny" | "patrolFrequency" | "garrisonStrength",
+    key:
+      | "customsScrutiny"
+      | "patrolFrequency"
+      | "garrisonStrength"
+      | "resistance"
+      | "healthcareFacilities"
+      | "techLevel"
+      | "populationDensity"
+      | "popularSupport",
   ) => {
     const d = getIntelDisplay(state, locationId, key);
     if (d.status === "unknown") return "?";
-    return `${d.value}${d.status === "stale" ? " (stale)" : ""}`;
+    const loc = getLocation(state, locationId);
+    const value = loc?.attributes[key];
+    if (typeof value !== "number") return "?";
+    return `${value}${d.status === "stale" ? " (stale)" : ""}`;
   };
   const personnelByLocationId = useMemo(() => {
     const map = new Map<string, Personnel[]>();
@@ -160,7 +179,11 @@ export const App = () => {
     [data.planets, selectedSectorId],
   );
   const planetLocations = useMemo(
-    () => data.locations.filter((location) => location.planetId === selectedPlanetId),
+    () =>
+      data.locations.filter(
+        (location) =>
+          location.planetId === selectedPlanetId && !location.disabled,
+      ),
     [data.locations, selectedPlanetId],
   );
   const locationPersonnel = useMemo(() => {
@@ -213,6 +236,25 @@ export const App = () => {
     buildLocationLabel(locationId, locationById, planetById, sectorById);
   const formatRoleLabel = (roleId: string) =>
     roleId.charAt(0).toUpperCase() + roleId.slice(1);
+  const LOCATION_ATTR_LABELS: Record<string, string> = {
+    resistance: "Resistance",
+    healthcareFacilities: "Healthcare",
+    techLevel: "Tech level",
+    populationDensity: "Population density",
+    customsScrutiny: "Customs",
+    patrolFrequency: "Patrols",
+    garrisonStrength: "Garrison",
+    popularSupport: "Popular support",
+  };
+  const formatLocationAttributes = (attrs: Record<string, number> | undefined) =>
+    attrs && Object.keys(attrs).length > 0
+      ? Object.entries(attrs)
+          .map(
+            ([key, delta]) =>
+              `${LOCATION_ATTR_LABELS[key] ?? key} ${delta >= 0 ? "+" : ""}${delta}`,
+          )
+          .join(", ")
+      : null;
   const formatRolesWithLevel = (person: Personnel) =>
     person.roles?.length
       ? person.roles
@@ -370,6 +412,16 @@ export const App = () => {
     () => new Map(runtime.materials.map((item) => [item.id, item])),
     [runtime.materials],
   );
+  const personnelEligibleForSelectedPlan = useMemo(() => {
+    if (!selectedPlan) return new Set<string>();
+    const eligible = new Set<string>();
+    for (const person of locationPersonnel) {
+      if (validateAssignment(state, selectedPlan, [person], selectedLocationId).length === 0) {
+        eligible.add(person.id);
+      }
+    }
+    return eligible;
+  }, [state, selectedPlan, selectedLocationId, locationPersonnel]);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const lastEventIdRef = useRef<string | null>(null);
@@ -516,10 +568,11 @@ export const App = () => {
     setMapLevel("galaxy");
     setSelectedSectorId(data.sectors[0]?.id ?? "");
     setSelectedPlanetId(data.planets[0]?.id ?? "");
-    setSelectedLocationId(data.locations[0]?.id ?? "");
+    const firstEnabled = data.locations.find((l) => !l.disabled)?.id ?? data.locations[0]?.id ?? "";
+    setSelectedLocationId(firstEnabled);
     setSelectedPlanId(data.missionPlans[0]?.id ?? "");
     setTravelPersonnelId(loaded.personnel[0]?.id ?? "");
-    setTravelDestinationId(data.locations[0]?.id ?? "");
+    setTravelDestinationId(firstEnabled);
   };
   const handleSaveSlot = (slot: number) => {
     saveSlot(slot, runtime);
@@ -549,6 +602,9 @@ export const App = () => {
     setState(refreshed);
     setPendingAssignment(null);
     setSelectedPersonnelIds([]);
+    const firstEnabled = refreshed.data.locations.find((l) => !l.disabled)?.id ?? refreshed.data.locations[0]?.id ?? "";
+    setSelectedLocationId(firstEnabled);
+    setTravelDestinationId(firstEnabled);
     pushToast("Game restarted from baseline.");
   };
   const handleOpenAdmin = () => {
@@ -875,11 +931,18 @@ export const App = () => {
   }, [isPaused]);
 
   useEffect(() => {
-    if (locationById.has(selectedLocationId)) {
+    const isEnabled = enabledLocations.some((l) => l.id === selectedLocationId);
+    if (isEnabled || enabledLocations.length === 0) {
       return;
     }
-    setSelectedLocationId(data.locations[0]?.id ?? "");
-  }, [locationById, selectedLocationId, data.locations]);
+    setSelectedLocationId(enabledLocations[0]?.id ?? "");
+  }, [enabledLocations, selectedLocationId]);
+
+  useEffect(() => {
+    const travelEnabled = enabledLocations.some((l) => l.id === travelDestinationId);
+    if (travelEnabled || enabledLocations.length === 0) return;
+    setTravelDestinationId(enabledLocations[0]?.id ?? "");
+  }, [enabledLocations, travelDestinationId]);
 
   useEffect(() => {
     if (mapMode === "locations") {
@@ -1110,6 +1173,9 @@ export const App = () => {
                       setSelectedPlanetId(planet.id);
                       setMapLevel("planet");
                       const firstLocation = data.locations.find(
+                        (location) =>
+                          location.planetId === planet.id && !location.disabled,
+                      ) ?? data.locations.find(
                         (location) => location.planetId === planet.id,
                       );
                       if (firstLocation) {
@@ -1251,7 +1317,8 @@ export const App = () => {
                             {sectorPlanets.map((planet) => {
                               const isPlanetExpanded = expandedPlanetIds.includes(planet.id);
                               const planetLocations = data.locations.filter(
-                                (location) => location.planetId === planet.id,
+                                (location) =>
+                                  location.planetId === planet.id && !location.disabled,
                               );
                               return (
                                 <div key={planet.id} className="location-tree-node">
@@ -1301,6 +1368,10 @@ export const App = () => {
                                         Position: {planet.position.x}, {planet.position.y}
                                       </div>
                                       <div className="meta">
+                                        Planetary popular support:{" "}
+                                        {getPlanetPopularSupport(state, planet.id)}
+                                      </div>
+                                      <div className="meta">
                                         Locations: {planetLocations.length}
                                       </div>
                                       <div className="location-tree-children">
@@ -1338,13 +1409,16 @@ export const App = () => {
                                                 {isExpanded ? (
                                                   <div className="location-tree-details">
                                                     <div className="meta">
-                                                      Resistance {location.attributes.resistance}
+                                                      Resistance {formatIntel(location.id, "resistance")}
                                                     </div>
                                                     <div className="meta">
-                                                      Tech {location.attributes.techLevel}
+                                                      Tech {formatIntel(location.id, "techLevel")}
                                                     </div>
                                                     <div className="meta">
-                                                      Population {location.attributes.populationDensity}
+                                                      Population {formatIntel(location.id, "populationDensity")}
+                                                    </div>
+                                                    <div className="meta">
+                                                      Popular support {formatIntel(location.id, "popularSupport")}
                                                     </div>
                                                     <div className="meta">
                                                       Customs {formatIntel(location.id, "customsScrutiny")}
@@ -1411,15 +1485,22 @@ export const App = () => {
             <div className="meta">
               {getLocationLabel(selectedLocation.id)}
               <div className="meta">
-                Resistance {selectedLocation.attributes.resistance} · Tech{" "}
-                {selectedLocation.attributes.techLevel} · Population{" "}
-                {selectedLocation.attributes.populationDensity}
+                Resistance {formatIntel(selectedLocation.id, "resistance")} · Tech{" "}
+                {formatIntel(selectedLocation.id, "techLevel")} · Population{" "}
+                {formatIntel(selectedLocation.id, "populationDensity")} · Popular support{" "}
+                {formatIntel(selectedLocation.id, "popularSupport")}
               </div>
               <div className="meta">
                 Customs {formatIntel(selectedLocation.id, "customsScrutiny")} · Patrols{" "}
                 {formatIntel(selectedLocation.id, "patrolFrequency")} · Garrison{" "}
                 {formatIntel(selectedLocation.id, "garrisonStrength")}
               </div>
+              {selectedLocation.planetId ? (
+                <div className="meta">
+                  Planetary popular support:{" "}
+                  {getPlanetPopularSupport(state, selectedLocation.planetId)}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="meta">Select a location to see details.</div>
@@ -1436,6 +1517,9 @@ export const App = () => {
                   contextPlan &&
                   contextPlan.type === "training" &&
                   !canPersonnelBeAssignedToTrainingPlan(person, contextPlan);
+                const canDragForContext =
+                  (person.status === "idle" && !cannotTrainForThisPlan) ||
+                  (person.status === "wounded" && contextPlan?.type === "recovery");
                 return (
                 <div
                   key={person.id}
@@ -1447,11 +1531,13 @@ export const App = () => {
                       : ""
                   }${flashPersonnelId === person.id ? " is-flashing" : ""}${
                     selectedPersonnelIds.includes(person.id) ? " is-selected" : ""
-                  }${cannotTrainForThisPlan ? " cannot-train-new-role" : ""}`}
+                  }${cannotTrainForThisPlan ? " cannot-train-new-role" : ""}${
+                    selectedPlan && personnelEligibleForSelectedPlan.has(person.id)
+                      ? " can-assign-to-mission"
+                      : ""
+                  }`}
                   style={getPersonnelOptionStyle(person)}
-                  draggable={
-                    person.status === "idle" && !cannotTrainForThisPlan
-                  }
+                  draggable={canDragForContext}
                   onClick={(event) => {
                     if (event.ctrlKey || event.metaKey) {
                       setSelectedPersonnelIds((prev) =>
@@ -1464,7 +1550,7 @@ export const App = () => {
                     setSelectedPersonnelIds([person.id]);
                   }}
                   onDragStart={(event) => {
-                    if (person.status !== "idle") {
+                    if (!canDragForContext) {
                       event.preventDefault();
                       return;
                     }
@@ -1917,6 +2003,16 @@ export const App = () => {
                   </div>
                 </div>
               ) : null}
+              {formatLocationAttributes(detailPlan.rewards?.locationAttributes) ? (
+                <div className="meta assignment-details-item">
+                  On success (location): {formatLocationAttributes(detailPlan.rewards?.locationAttributes)}
+                </div>
+              ) : null}
+              {formatLocationAttributes(detailPlan.penalties?.locationAttributes) ? (
+                <div className="meta assignment-details-item">
+                  On failure (location): {formatLocationAttributes(detailPlan.penalties?.locationAttributes)}
+                </div>
+              ) : null}
             </div>
             );
           })() : (
@@ -1971,7 +2067,7 @@ export const App = () => {
               value={travelDestinationId}
               onChange={(event) => setTravelDestinationId(event.target.value)}
             >
-              {data.locations.map((location) => (
+              {enabledLocations.map((location) => (
                 <option key={location.id} value={location.id}>
                   {getLocationLabel(location.id)}
                 </option>
