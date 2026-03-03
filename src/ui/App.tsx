@@ -5,6 +5,7 @@ import {
   canPersonnelBeAssignedToTrainingPlan,
   getIntelDisplay,
   getLocation,
+  getMissionOperationalRisk,
   getMissionSuccessChance,
   getPlanetPopularSupport,
   getTraitsForPerson,
@@ -22,6 +23,8 @@ import {
   getPersonnelOptionStyle as buildPersonnelOptionStyle,
   getPersonnelStatusMeta as buildPersonnelStatusMeta,
   getPlanHoursLeftLabel as buildPlanHoursLeftLabel,
+  getTravelBlockReason,
+  canPersonnelTravel,
 } from "../game/selectors.js";
 import {
   SAVE_SLOTS,
@@ -42,7 +45,7 @@ export const App = () => {
   const runtime = state.runtime;
   const [speedIndex, setSpeedIndex] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(true);
-  const [mapMode, setMapMode] = useState<"map" | "locations">("map");
+  const [mapMode, setMapMode] = useState<"map" | "locations" | "table">("map");
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(
     null,
   );
@@ -277,14 +280,22 @@ export const App = () => {
     const globalPlans = data.missionPlans.filter(
       (plan) => plan.availability?.type === "global",
     );
+    const hasCaptured = runtime.personnel.some((p) => p.status === "captured");
+    const hasMia = runtime.personnel.some((p) => p.status === "mia");
+    const crisisPlans = globalPlans.filter(
+      (plan) =>
+        (plan.type !== "rescue" && plan.type !== "search") ||
+        (plan.type === "rescue" && hasCaptured) ||
+        (plan.type === "search" && hasMia),
+    );
     const timePlans = data.missionPlans.filter(
       (plan) =>
         plan.availability?.type === "time" &&
         runtime.nowHours >= plan.availability.startHours &&
         runtime.nowHours <= plan.availability.endHours,
     );
-    return [...plansFromOffers, ...globalPlans, ...timePlans];
-  }, [availableOffers, data.missionPlans, runtime.nowHours]);
+    return [...plansFromOffers, ...crisisPlans, ...timePlans];
+  }, [availableOffers, data.missionPlans, runtime.nowHours, runtime.personnel]);
   const timePlanCount = useMemo(
     () =>
       data.missionPlans.filter(
@@ -305,6 +316,16 @@ export const App = () => {
     }
     return map;
   }, [data.locations, runtime.missionOffers, timePlanCount]);
+  const missionsByLocationId = useMemo(() => {
+    const map = new Map<string, typeof runtime.missions[number][]>();
+    for (const mission of runtime.missions) {
+      if (mission.status !== "active") continue;
+      const list = map.get(mission.locationId) ?? [];
+      list.push(mission);
+      map.set(mission.locationId, list);
+    }
+    return map;
+  }, [runtime.missions]);
   const getPlanSortValue = (plan: typeof availablePlans[number]) => {
     const offerHours = offerHoursByPlanId.get(plan.id);
     if (offerHours !== undefined) {
@@ -416,6 +437,7 @@ export const App = () => {
     if (!selectedPlan) return new Set<string>();
     const eligible = new Set<string>();
     for (const person of locationPersonnel) {
+      if (person.status === "killed") continue;
       if (validateAssignment(state, selectedPlan, [person], selectedLocationId).length === 0) {
         eligible.add(person.id);
       }
@@ -945,6 +967,14 @@ export const App = () => {
   }, [enabledLocations, travelDestinationId]);
 
   useEffect(() => {
+    if (!travelPersonnelId) return;
+    const person = personnelById.get(travelPersonnelId);
+    if (!person || canPersonnelTravel(person)) return;
+    const firstIdle = runtime.personnel.find((p) => canPersonnelTravel(p))?.id;
+    setTravelPersonnelId(firstIdle ?? "");
+  }, [personnelById, runtime.personnel, travelPersonnelId]);
+
+  useEffect(() => {
     if (mapMode === "locations") {
       setExpandedLocationId(null);
       setExpandedSectorIds([]);
@@ -979,9 +1009,11 @@ export const App = () => {
     }
     const planet = planetById.get(location.planetId);
     if (planet && planet.sectorId !== selectedSectorId) {
-      setSelectedSectorId(planet.sectorId);
+      if (mapLevel !== "sector") {
+        setSelectedSectorId(planet.sectorId);
+      }
     }
-  }, [locationById, planetById, selectedLocationId, selectedPlanetId, selectedSectorId]);
+  }, [locationById, planetById, selectedLocationId, selectedPlanetId, selectedSectorId, mapLevel]);
 
   return (
     <div className="page">
@@ -1075,6 +1107,13 @@ export const App = () => {
             >
               Locations
             </button>
+            <button
+              type="button"
+              className={mapMode === "table" ? "is-active" : ""}
+              onClick={() => setMapMode("table")}
+            >
+              Table
+            </button>
           </div>
           <div className="map-breadcrumbs">
             <button type="button" onClick={() => setMapLevel("galaxy")}>
@@ -1097,7 +1136,97 @@ export const App = () => {
           </div>
         </div>
         <div className="map-panel-body">
-          {mapMode === "map" ? (
+          {mapMode === "table" ? (
+            <div className="map-table-wrap">
+              <table className="map-table">
+                <thead>
+                  <tr>
+                    <th>Sector</th>
+                    <th>Planet</th>
+                    <th>Location</th>
+                    <th>Enabled</th>
+                    {(
+                      [
+                        "resistance",
+                        "healthcareFacilities",
+                        "techLevel",
+                        "populationDensity",
+                        "customsScrutiny",
+                        "patrolFrequency",
+                        "garrisonStrength",
+                        "popularSupport",
+                      ] as const
+                    ).map((key) => (
+                      <th key={key}>{LOCATION_ATTR_LABELS[key] ?? key}</th>
+                    ))}
+                    <th>Agents</th>
+                    <th>Missions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data.locations]
+                    .sort((a, b) => {
+                      const aEnabled = !a.disabled ? 1 : 0;
+                      const bEnabled = !b.disabled ? 1 : 0;
+                      if (aEnabled !== bEnabled) return bEnabled - aEnabled;
+                      const aPlanet = planetById.get(a.planetId)?.name ?? a.planetId;
+                      const bPlanet = planetById.get(b.planetId)?.name ?? b.planetId;
+                      const sectorCmp = aPlanet.localeCompare(bPlanet);
+                      if (sectorCmp !== 0) return sectorCmp;
+                      return (a.name ?? a.id).localeCompare(b.name ?? b.id);
+                    })
+                    .map((location) => {
+                      const planet = planetById.get(location.planetId);
+                      const sector = planet
+                        ? sectorById.get(planet.sectorId)
+                        : null;
+                      const agents = personnelByLocationId.get(location.id) ?? [];
+                      const missions = missionsByLocationId.get(location.id) ?? [];
+                      return (
+                        <tr key={location.id}>
+                          <td>{sector?.name ?? "—"}</td>
+                          <td>{planet?.name ?? location.planetId ?? "—"}</td>
+                          <td>{location.name}</td>
+                          <td>{location.disabled ? "Disabled" : "Enabled"}</td>
+                          {(
+                            [
+                              "resistance",
+                              "healthcareFacilities",
+                              "techLevel",
+                              "populationDensity",
+                              "customsScrutiny",
+                              "patrolFrequency",
+                              "garrisonStrength",
+                              "popularSupport",
+                            ] as const
+                          ).map((key) => (
+                            <td key={key}>
+                              {location.attributes[key] ?? "—"}
+                            </td>
+                          ))}
+                          <td>
+                            {agents.length === 0
+                              ? "—"
+                              : agents.map((p) => p.name).join(", ")}
+                          </td>
+                          <td>
+                            {missions.length === 0
+                              ? "—"
+                              : missions
+                                  .map((m) => {
+                                    const plan = planById.get(m.planId);
+                                    const name = plan?.name ?? m.planId ?? "Unknown plan";
+                                    return `${name} (${Math.ceil(m.remainingHours)}h)`;
+                                  })
+                                  .join(", ")}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : mapMode === "map" ? (
             mapLevel === "galaxy" ? (
               <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
               {[
@@ -1106,7 +1235,13 @@ export const App = () => {
                 { x: 5, y: 61 },
                 { x: 61, y: 61 },
               ].map((position, index) => {
-                const sector = data.sectors[index];
+                const sectorBySlot =
+                  index === 0
+                    ? data.sectors.find((s) => s.id === "core-sector")
+                    : index === 1
+                      ? data.sectors.find((s) => s.id === "rim-sector")
+                      : undefined;
+                const sector = sectorBySlot ?? data.sectors[index];
                 const count = sector
                   ? personnelCountBySectorId.get(sector.id) ?? 0
                   : 0;
@@ -1243,7 +1378,7 @@ export const App = () => {
                     y={location.position.y + 12}
                     className="map-label"
                   >
-                    {missionCountByLocationId.get(location.id) ?? 0} missions
+                    {personnelByLocationId.get(location.id)?.length ?? 0} agents
                   </text>
                 </g>
               )})}
@@ -1525,12 +1660,25 @@ export const App = () => {
                   key={person.id}
                   className={`personnel-card${
                     person.status === "wounded" ||
+                    person.status === "captured" ||
+                    person.status === "mia" ||
+                    person.status === "killed" ||
                     person.status === "assigned" ||
                     person.status === "traveling"
                       ? " is-unavailable"
                       : ""
                   }${flashPersonnelId === person.id ? " is-flashing" : ""}${
-                    selectedPersonnelIds.includes(person.id) ? " is-selected" : ""
+                    selectedPersonnelIds.includes(person.id)
+                      ? (person.status === "wounded" ||
+                        person.status === "captured" ||
+                        person.status === "mia" ||
+                        person.status === "killed" ||
+                        person.status === "assigned" ||
+                        person.status === "traveling" ||
+                        person.status === "resting")
+                        ? " is-selected-unavailable"
+                        : " is-selected"
+                      : ""
                   }${cannotTrainForThisPlan ? " cannot-train-new-role" : ""}${
                     selectedPlan && personnelEligibleForSelectedPlan.has(person.id)
                       ? " can-assign-to-mission"
@@ -1586,6 +1734,30 @@ export const App = () => {
                       {getLocationLabel(person.locationId)}
                     </button>
                   </div>
+                  {person.status === "captured" && person.capturedLocationId ? (
+                    <div className="meta">
+                      Held at:{" "}
+                      <button
+                        type="button"
+                        className="inline-link"
+                        onClick={() => jumpToLocation(person.capturedLocationId!)}
+                      >
+                        {getLocationLabel(person.capturedLocationId)}
+                      </button>
+                    </div>
+                  ) : null}
+                  {person.status === "mia" && person.miaLocationId ? (
+                    <div className="meta">
+                      Last seen:{" "}
+                      <button
+                        type="button"
+                        className="inline-link"
+                        onClick={() => jumpToLocation(person.miaLocationId!)}
+                      >
+                        {getLocationLabel(person.miaLocationId)}
+                      </button>
+                    </div>
+                  ) : null}
                   {missionByPersonnelId.get(person.id) ? (
                     <div className="meta">
                       Mission:{" "}
@@ -1673,6 +1845,19 @@ export const App = () => {
                 isPending && pendingPersonnel.length > 0
                   ? getMissionSuccessChance(plan, pendingPersonnel)
                   : null;
+              const pendingRisk =
+                isPending &&
+                pendingPersonnel.length > 0 &&
+                selectedLocationId &&
+                selectedLocationId !== "galaxy" &&
+                plan.type !== "recovery"
+                  ? getMissionOperationalRisk(
+                      state,
+                      plan,
+                      selectedLocationId,
+                      pendingPersonnel,
+                    )
+                  : null;
               const baseSuccessPercent = Math.round(plan.baseSuccessChance * 100);
               const pendingSuccessPercent = pendingSuccessInfo
                 ? Math.round(pendingSuccessInfo.chance * 100)
@@ -1754,6 +1939,11 @@ export const App = () => {
                     ? ` → ${pendingSuccessPercent}%`
                     : ""}
                 </div>
+                {pendingRisk !== null ? (
+                  <div className="meta">
+                    Risk: {Math.round(pendingRisk * 100)}%
+                  </div>
+                ) : null}
                 {isGlobalCooldown ? (
                   <div className="meta">
                     Cooldown: {Math.ceil(activeMission?.remainingHours ?? 0)}h left
@@ -2052,13 +2242,30 @@ export const App = () => {
               value={travelPersonnelId}
               onChange={(event) => setTravelPersonnelId(event.target.value)}
             >
-              {runtime.personnel.map((person) => (
-                <option key={person.id} value={person.id} style={getPersonnelOptionStyle(person)}>
-                  {person.name} · {formatRolesWithLevel(person)} ·{" "}
-                  {getTraitsForPerson(person).join(", ") || "no traits"} · {person.status} ·{" "}
-                  {getLocationLabel(person.locationId)}
+              {runtime.personnel.filter((p) => canPersonnelTravel(p)).length ===
+                0 && (
+                <option value="">
+                  — No agents available for travel —
                 </option>
-              ))}
+              )}
+              {runtime.personnel.map((person) => {
+                const blockReason = getTravelBlockReason(person);
+                const canTravel = blockReason === null;
+                return (
+                  <option
+                    key={person.id}
+                    value={person.id}
+                    disabled={!canTravel}
+                    style={getPersonnelOptionStyle(person)}
+                  >
+                    {person.name} · {formatRolesWithLevel(person)} ·{" "}
+                    {getTraitsForPerson(person).join(", ") || "no traits"} ·{" "}
+                    {canTravel
+                      ? `${person.status} · ${getLocationLabel(person.locationId)}`
+                      : `${person.status} (${blockReason}) — cannot travel`}
+                  </option>
+                );
+              })}
             </select>
           </label>
           <label className="field">
@@ -2084,10 +2291,29 @@ export const App = () => {
             />
           </label>
           <div className="actions">
-            <button type="button" onClick={handleAssignTravel}>
+            <button
+              type="button"
+              onClick={handleAssignTravel}
+              disabled={
+                !travelPersonnelId ||
+                !travelDestinationId ||
+                !canPersonnelTravel(
+                  personnelById.get(travelPersonnelId) ?? ({} as Personnel),
+                )
+              }
+            >
               Assign travel
             </button>
           </div>
+          {travelPersonnelId &&
+            personnelById.has(travelPersonnelId) &&
+            !canPersonnelTravel(
+              personnelById.get(travelPersonnelId) ?? ({} as Personnel),
+            ) && (
+              <p className="field-hint">
+                This agent cannot travel while on a mission or resting.
+              </p>
+            )}
           {runtime.travel.length > 0 ? (
             <ul>
               {runtime.travel.map((assignment) => (

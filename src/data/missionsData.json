@@ -9,6 +9,7 @@
       "requiredRoles": [],
       "durationHours": 48,
       "baseSuccessChance": 1,
+      "baseRiskRating": 0,
       "rewards": { "currency": { "credits": 0, "intel": 0 }, "locationAttributes": { "popularSupport": 1 } },
       "penalties": { "currency": { "credits": 0, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } }
     },
@@ -553,6 +554,117 @@
         "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny"],
         "quality": "med"
       }
+    },
+    {
+      "id": "rescue-agent",
+      "name": "Rescue Agent",
+      "summary": "Extract a captured ally from enemy hands.",
+      "type": "rescue",
+      "availability": { "type": "global" },
+      "requiredRoles": ["combat", "espionage"],
+      "durationHours": 24,
+      "baseSuccessChance": 0.55,
+      "baseRiskRating": 0.5,
+      "rewards": { "currency": { "credits": 0, "intel": 1 } },
+      "penalties": { "currency": { "credits": -100, "intel": 0 } }
+    },
+    {
+      "id": "search-agent",
+      "name": "Search for Agent",
+      "summary": "Look for an MIA agent at their last known location.",
+      "type": "search",
+      "availability": { "type": "global" },
+      "requiredRoles": ["espionage", "operations"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.6,
+      "baseRiskRating": 0.2,
+      "rewards": { "currency": { "credits": 0, "intel": 2 } },
+      "penalties": { "currency": { "credits": -50, "intel": 0 } }
+    },
+    {
+      "id": "gather-intel",
+      "name": "Gather Intel",
+      "summary": "Collect intelligence on one aspect of a location; which aspect is uncovered is determined in the field.",
+      "type": "espionage",
+      "availability": { "type": "global" },
+      "requiredRoles": ["espionage"],
+      "durationHours": 12,
+      "baseSuccessChance": 0.7,
+      "rewards": { "currency": { "credits": 100, "intel": 1 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -60, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": [], "quality": "low" }
+    },
+    {
+      "id": "intel-local-contacts",
+      "name": "Local Contacts",
+      "summary": "Gather intel on resistance networks and popular support.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.7,
+      "rewards": { "currency": { "credits": 120, "intel": 1 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -70, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["resistance", "popularSupport"], "quality": "low" }
+    },
+    {
+      "id": "intel-eyes-on-the-ground",
+      "name": "Eyes on the Ground",
+      "summary": "Gather security intel on garrison and patrol activity.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.7,
+      "rewards": { "currency": { "credits": 120, "intel": 1 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -70, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["garrisonStrength", "patrolFrequency"], "quality": "low" }
+    },
+    {
+      "id": "intel-street-sweep",
+      "name": "Street Sweep",
+      "summary": "Gather intel on customs scrutiny and tech level.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 14,
+      "baseSuccessChance": 0.7,
+      "rewards": { "currency": { "credits": 120, "intel": 1 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -70, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["customsScrutiny", "techLevel"], "quality": "low" }
+    },
+    {
+      "id": "intel-quarter-profile",
+      "name": "Quarter Profile",
+      "summary": "Security and customs intel plus popular support.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.65,
+      "rewards": { "currency": { "credits": 180, "intel": 2 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -90, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny", "popularSupport"], "quality": "med" }
+    },
+    {
+      "id": "intel-sector-assessment",
+      "name": "Sector Assessment",
+      "summary": "Resistance, tech, population density, and popular support.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 18,
+      "baseSuccessChance": 0.65,
+      "rewards": { "currency": { "credits": 180, "intel": 2 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -90, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["resistance", "techLevel", "populationDensity", "popularSupport"], "quality": "med" }
+    },
+    {
+      "id": "intel-full-dossier",
+      "name": "Full Dossier",
+      "summary": "Complete intelligence picture across all eight location attributes.",
+      "type": "espionage",
+      "requiredRoles": ["espionage"],
+      "durationHours": 24,
+      "baseSuccessChance": 0.6,
+      "rewards": { "currency": { "credits": 250, "intel": 3 }, "locationAttributes": { "popularSupport": 1 } },
+      "penalties": { "currency": { "credits": -120, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
+      "intelRewards": { "target": "location", "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny", "resistance", "techLevel", "populationDensity", "popularSupport", "healthcareFacilities"], "quality": "high" }
     }
   ],
   "locationAssignments": [
@@ -744,6 +856,69 @@
       "planId": "expose-corruption",
       "appearanceChance": 0.04,
       "windowHours": 22
+    },
+    {
+      "id": "assign-tatooine-intel-local-contacts",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "intel-local-contacts",
+      "appearanceChance": 0.06,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-coruscant-intel-eyes-on-the-ground",
+      "locationId": "coruscant-senate",
+      "planId": "intel-eyes-on-the-ground",
+      "appearanceChance": 0.05,
+      "windowHours": 18
+    },
+    {
+      "id": "assign-corellia-intel-street-sweep",
+      "locationId": "corellia-shipyards",
+      "planId": "intel-street-sweep",
+      "appearanceChance": 0.05,
+      "windowHours": 22
+    },
+    {
+      "id": "assign-sullust-intel-quarter-profile",
+      "locationId": "sullust-capital",
+      "planId": "intel-quarter-profile",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-tatooine-intel-sector-assessment",
+      "locationId": "tatooine-mos-espa",
+      "planId": "intel-sector-assessment",
+      "appearanceChance": 0.05,
+      "windowHours": 22
+    },
+    {
+      "id": "assign-corellia-intel-full-dossier",
+      "locationId": "corellia-shipyards",
+      "planId": "intel-full-dossier",
+      "appearanceChance": 0.04,
+      "windowHours": 24
+    },
+    {
+      "id": "assign-sullust-intel-local-contacts",
+      "locationId": "sullust-capital",
+      "planId": "intel-local-contacts",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-tatooine-intel-eyes-on-the-ground",
+      "locationId": "tatooine-mos-eisley",
+      "planId": "intel-eyes-on-the-ground",
+      "appearanceChance": 0.05,
+      "windowHours": 20
+    },
+    {
+      "id": "assign-coruscant-intel-quarter-profile",
+      "locationId": "coruscant-senate",
+      "planId": "intel-quarter-profile",
+      "appearanceChance": 0.05,
+      "windowHours": 18
     }
   ]
 }

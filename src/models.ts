@@ -13,6 +13,8 @@ export type PersonnelStatus =
   | "traveling"
   | "wounded"
   | "captured"
+  | "mia"
+  | "killed"
   | "resting";
 
 export type MissionStatus = "planned" | "active" | "resolved" | "failed";
@@ -22,7 +24,9 @@ export type MissionType =
   | "recruit-allies"
   | "espionage"
   | "training"
-  | "recovery";
+  | "recovery"
+  | "rescue"
+  | "search";
 
 export type IntelQuality = "low" | "med" | "high";
 
@@ -33,6 +37,11 @@ export interface LocationTruth {
   enemyAgents?: string[];
   enemyMissions?: string[];
   specialHooks?: string[];
+  resistance?: number;
+  techLevel?: number;
+  populationDensity?: number;
+  popularSupport?: number;
+  healthcareFacilities?: number;
 }
 
 export interface IntelSnapshot {
@@ -61,6 +70,15 @@ export interface Personnel {
   woundedAtHours?: number;
   /** Set when status becomes resting; cleared when transitioning to idle. */
   restingUntilHours?: number;
+  /** Set when status becomes captured; used for Rescue and passive escape. */
+  capturedAtHours?: number;
+  capturedLocationId?: string;
+  /** Set when status becomes MIA; used for Search and passive return. */
+  miaAtHours?: number;
+  miaLocationId?: string;
+  /** Set when status becomes killed; optional for memorial/event display. */
+  killedAtHours?: number;
+  killedMissionId?: string;
   roleLevels?: Partial<Record<PersonnelRole, number>>;
 }
 
@@ -160,6 +178,8 @@ export interface MissionPlan {
   };
   requiresKnownHook?: string;
   trainingReward?: { roleId: PersonnelRole };
+  /** Base operational risk (0–1) for this mission type; used with location and agent mitigation. */
+  baseRiskRating?: number;
 }
 
 export interface MissionInstance {
@@ -167,6 +187,8 @@ export interface MissionInstance {
   planId: string;
   locationId: string;
   assignedPersonnelIds: string[];
+  /** For rescue: captured agent id(s) to free. For search: MIA agent id(s) to find. */
+  targetPersonnelIds?: string[];
   status: MissionStatus;
   remainingHours: number;
   startedAtHours: number;

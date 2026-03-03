@@ -1312,6 +1312,10 @@ export const AdminApp = () => {
                       <option value="assigned">assigned</option>
                       <option value="traveling">traveling</option>
                       <option value="wounded">wounded</option>
+                      <option value="captured">captured</option>
+                      <option value="mia">mia</option>
+                      <option value="killed">killed</option>
+                      <option value="resting">resting</option>
                     </select>
                   </label>
                   <label className="field">

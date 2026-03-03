@@ -49,6 +49,15 @@ export const getPersonnelStatusMeta = (person: Personnel) => {
   if (person.status === "wounded") {
     return { label: "injured", className: "is-injured" };
   }
+  if (person.status === "captured") {
+    return { label: "captured", className: "is-captured" };
+  }
+  if (person.status === "mia") {
+    return { label: "MIA", className: "is-mia" };
+  }
+  if (person.status === "killed") {
+    return { label: "killed", className: "is-killed" };
+  }
   if (person.status === "assigned" || person.status === "traveling") {
     return { label: "on mission", className: "is-mission" };
   }
@@ -61,8 +70,39 @@ export const getPersonnelStatusMeta = (person: Personnel) => {
 export const getPersonnelOptionStyle = (person: Personnel) => {
   const isUnavailable =
     person.status === "wounded" ||
+    person.status === "captured" ||
+    person.status === "mia" ||
+    person.status === "killed" ||
     person.status === "assigned" ||
     person.status === "traveling" ||
     person.status === "resting";
   return isUnavailable ? { color: "#6b7280" } : undefined;
 };
+
+/** Returns null if the person can be assigned to travel; otherwise a short reason (e.g. "on mission", "resting"). */
+export const getTravelBlockReason = (person: Personnel): string | null => {
+  switch (person.status) {
+    case "idle":
+      return null;
+    case "assigned":
+      return "on mission";
+    case "traveling":
+      return "traveling";
+    case "resting":
+      return "resting";
+    case "wounded":
+      return "wounded";
+    case "captured":
+      return "captured";
+    case "mia":
+      return "MIA";
+    case "killed":
+      return "killed";
+    default:
+      return "unavailable";
+  }
+};
+
+/** True if the person can be assigned to travel (idle only). */
+export const canPersonnelTravel = (person: Personnel): boolean =>
+  getTravelBlockReason(person) === null;

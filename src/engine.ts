@@ -168,6 +168,90 @@ export const getMissionSuccessChance = (
   };
 };
 
+/** Default base risk by mission type when plan.baseRiskRating is missing. */
+const DEFAULT_BASE_RISK_BY_TYPE: Partial<Record<string, number>> = {
+  recovery: 0,
+  training: 0.05,
+  logistics: 0.1,
+  "gather-materials": 0.15,
+  "recruit-allies": 0.1,
+  espionage: 0.25,
+  rescue: 0.5,
+  search: 0.2,
+};
+
+export const getBaseRiskRating = (plan: MissionPlan): number => {
+  if (plan.baseRiskRating !== undefined && plan.baseRiskRating !== null) {
+    return Math.max(0, Math.min(1, plan.baseRiskRating));
+  }
+  return Math.max(0, Math.min(1, DEFAULT_BASE_RISK_BY_TYPE[plan.type] ?? 0.15));
+};
+
+/** Location risk factor (multiplier). Hostile attributes increase, friendly decrease. Returns ~0.5–1.5. */
+export const getLocationRiskFactor = (
+  state: GameState,
+  locationId: string,
+): number => {
+  const location = getLocation(state, locationId);
+  if (!location) return 1;
+  const weights = (balance as { riskLocationWeights?: Record<string, number> }).riskLocationWeights ?? {};
+  const scale = (balance as { riskLocationScale?: number }).riskLocationScale ?? 1.5;
+  let contribution = 0;
+  const attrs = location.attributes as Record<string, number>;
+  for (const [key, weight] of Object.entries(weights)) {
+    const value = attrs[key] ?? 0;
+    contribution += weight * (value / 100);
+  }
+  const multiplier = 1 + contribution * scale;
+  return Math.max(0.5, Math.min(1.5, multiplier));
+};
+
+/** Trait risk modifier total for personnel (positive = more risk, negative = less risk). */
+export const getTraitRiskModifier = (personnel: Personnel[]): number => {
+  const traitModifiers = (balance as { traitRiskModifiers?: Record<string, number> }).traitRiskModifiers;
+  if (!traitModifiers) return 0;
+  const traits = getPersonnelTraits(personnel);
+  let total = 0;
+  for (const t of traits) {
+    total += traitModifiers[t] ?? 0;
+  }
+  return total;
+};
+
+/** Agent mitigation reduces effective risk (role levels + traits). Returns reduction in [0, 1]. */
+export const getAgentRiskMitigation = (
+  personnel: Personnel[],
+  plan: MissionPlan,
+): number => {
+  const perLevel = (balance as { riskRoleLevelReductionPerLevel?: number }).riskRoleLevelReductionPerLevel ?? 0.02;
+  const rolesToCheck = plan.requiredRoles.length > 0 ? plan.requiredRoles : (balance as { personnelRoles?: string[] }).personnelRoles ?? [];
+  let levelBonus = 0;
+  for (const person of personnel) {
+    const levels = person.roleLevels ?? {};
+    for (const roleId of rolesToCheck) {
+      const level = levels[roleId as PersonnelRole] ?? 1;
+      if (level > 1) levelBonus += (level - 1) * perLevel;
+    }
+  }
+  const traitMod = getTraitRiskModifier(personnel);
+  const traitReduction = -traitMod;
+  return Math.max(0, Math.min(1, levelBonus + traitReduction));
+};
+
+/** Effective operational risk [0, 1] for a mission at a location with given personnel. */
+export const getMissionOperationalRisk = (
+  state: GameState,
+  plan: MissionPlan,
+  locationId: string,
+  personnel: Personnel[],
+): number => {
+  const base = getBaseRiskRating(plan);
+  const locationFactor = getLocationRiskFactor(state, locationId);
+  const mitigation = getAgentRiskMitigation(personnel, plan);
+  const raw = base * locationFactor - mitigation;
+  return Math.max(0, Math.min(1, raw));
+};
+
 const mergeResources = (
   base: ResourceBundle,
   delta?: Partial<ResourceBundle>,
@@ -252,6 +336,11 @@ export const getLocationTruth = (state: GameState, locationId: string): Location
       enemyAgents: [],
       enemyMissions: [],
       specialHooks: [],
+      resistance: 0,
+      techLevel: 0,
+      populationDensity: 0,
+      popularSupport: 0,
+      healthcareFacilities: 0,
     };
   }
   const a = location.attributes;
@@ -262,6 +351,11 @@ export const getLocationTruth = (state: GameState, locationId: string): Location
     enemyAgents: [],
     enemyMissions: [],
     specialHooks: [],
+    resistance: a.resistance,
+    techLevel: a.techLevel,
+    populationDensity: a.populationDensity,
+    popularSupport: a.popularSupport,
+    healthcareFacilities: a.healthcareFacilities,
   };
 };
 
@@ -571,13 +665,30 @@ const getTruthValueByKey = (truth: LocationTruth, key: string): number | string[
       return truth.enemyMissions ?? [];
     case "specialHooks":
       return truth.specialHooks ?? [];
+    case "resistance":
+      return truth.resistance ?? 0;
+    case "techLevel":
+      return truth.techLevel ?? 0;
+    case "populationDensity":
+      return truth.populationDensity ?? 0;
+    case "popularSupport":
+      return truth.popularSupport ?? 0;
+    case "healthcareFacilities":
+      return truth.healthcareFacilities ?? 0;
     default:
       return 0;
   }
 };
 
 const isTruthKeyNumeric = (key: string): boolean =>
-  key === "garrisonStrength" || key === "patrolFrequency" || key === "customsScrutiny";
+  key === "garrisonStrength" ||
+  key === "patrolFrequency" ||
+  key === "customsScrutiny" ||
+  key === "resistance" ||
+  key === "techLevel" ||
+  key === "populationDensity" ||
+  key === "popularSupport" ||
+  key === "healthcareFacilities";
 
 const INTEL_KEY_LABEL: Record<string, string> = {
   customsScrutiny: "Customs",
@@ -586,15 +697,37 @@ const INTEL_KEY_LABEL: Record<string, string> = {
   enemyAgents: "Enemy agents",
   enemyMissions: "Enemy missions",
   specialHooks: "Special hooks",
+  resistance: "Resistance",
+  techLevel: "Tech level",
+  populationDensity: "Population",
+  popularSupport: "Popular support",
+  healthcareFacilities: "Healthcare",
 };
 
 const INTEL_DISPLAY_ORDER = [
   "customsScrutiny",
   "patrolFrequency",
   "garrisonStrength",
+  "resistance",
+  "techLevel",
+  "populationDensity",
+  "popularSupport",
+  "healthcareFacilities",
   "enemyAgents",
   "enemyMissions",
   "specialHooks",
+];
+
+/** Eight location intel keys used by the global gather-intel mission (random one at resolution). */
+const GATHER_INTEL_KEYS: string[] = [
+  "garrisonStrength",
+  "patrolFrequency",
+  "customsScrutiny",
+  "resistance",
+  "techLevel",
+  "populationDensity",
+  "popularSupport",
+  "healthcareFacilities",
 ];
 
 const applyIntelRewards = (
@@ -706,6 +839,41 @@ export const validateAssignment = (
     return errors;
   }
 
+  if (plan.type === "rescue") {
+    if (!locationId || locationId === "galaxy") {
+      errors.push("Select a location where an agent is captured.");
+      return errors;
+    }
+    const capturedAtLocation = state.runtime.personnel.filter(
+      (p) => p.status === "captured" && p.capturedLocationId === locationId,
+    );
+    if (capturedAtLocation.length === 0) {
+      errors.push("No captured agents at this location.");
+      return errors;
+    }
+  }
+
+  if (plan.type === "search") {
+    if (!locationId || locationId === "galaxy") {
+      errors.push("Select a location to search for the MIA agent.");
+      return errors;
+    }
+    const miaAtLocation = state.runtime.personnel.filter(
+      (p) => p.status === "mia" && p.miaLocationId === locationId,
+    );
+    if (miaAtLocation.length === 0) {
+      errors.push("No MIA agents linked to this location.");
+      return errors;
+    }
+  }
+
+  if (plan.id === "gather-intel") {
+    if (!locationId || locationId === "galaxy") {
+      errors.push("Select a location to gather intel on.");
+      return errors;
+    }
+  }
+
   const isGlobal = plan.availability?.type === "global";
   const targetLocationId = locationId ?? personnel[0].locationId;
   if (!isGlobal) {
@@ -800,7 +968,10 @@ export const assignPersonnelToMission = (
   }
 
   const targetLocationId =
-    plan.type === "recovery"
+    plan.type === "recovery" ||
+    plan.type === "rescue" ||
+    plan.type === "search" ||
+    plan.id === "gather-intel"
       ? (locationId ?? personnel[0].locationId)
       : plan.availability?.type === "global"
         ? "galaxy"
@@ -821,11 +992,27 @@ export const assignPersonnelToMission = (
             return Math.round(plan.durationHours * multiplier);
           })()
         : plan.durationHours;
+  const targetPersonnelIds =
+    plan.type === "rescue"
+      ? state.runtime.personnel
+          .filter(
+            (p) =>
+              p.status === "captured" && p.capturedLocationId === targetLocationId,
+          )
+          .map((p) => p.id)
+      : plan.type === "search"
+        ? state.runtime.personnel
+            .filter(
+              (p) => p.status === "mia" && p.miaLocationId === targetLocationId,
+            )
+            .map((p) => p.id)
+        : undefined;
   const mission: MissionInstance = {
     id: `mission-${Date.now()}`,
     planId: plan.id,
     locationId: targetLocationId,
     assignedPersonnelIds: personnelIds,
+    ...(targetPersonnelIds?.length ? { targetPersonnelIds } : {}),
     status: "active",
     remainingHours,
     startedAtHours: state.runtime.nowHours,
@@ -917,6 +1104,42 @@ export const assignTravel = (
   };
 };
 
+type AdverseOutcome = "wounded" | "captured" | "mia" | "killed";
+
+/** Returns the adverse outcome for one agent based on effective risk and mission success. */
+function rollAdverseOutcome(
+  effectiveRisk: number,
+  missionSuccess: boolean,
+  rng: () => number = Math.random,
+): "safe" | AdverseOutcome {
+  const adverseScale = 0.85;
+  let totalAdverse = effectiveRisk * adverseScale;
+  if (!missionSuccess) {
+    const shift = (balance as { failureOutcomeShift?: number }).failureOutcomeShift ?? 0.25;
+    totalAdverse = Math.min(1, totalAdverse + shift);
+  }
+  const roll = rng();
+  if (roll < 1 - totalAdverse) return "safe";
+
+  const injuryF = (balance as { riskInjuryFactor?: number }).riskInjuryFactor ?? 0.25;
+  const captureF = (balance as { riskCaptureFactor?: number }).riskCaptureFactor ?? 0.08;
+  const miaF = (balance as { riskMiaFactor?: number }).riskMiaFactor ?? 0.04;
+  const killedF = (balance as { riskKilledFactor?: number }).riskKilledFactor ?? 0.02;
+  const killedThreshold = (balance as { riskKilledThreshold?: number }).riskKilledThreshold ?? 0.7;
+
+  const adverseRoll = (roll - (1 - totalAdverse)) / totalAdverse;
+  const sumF = injuryF + captureF + miaF + killedF;
+  const injuryEnd = injuryF / sumF;
+  const captureEnd = injuryEnd + captureF / sumF;
+  const miaEnd = captureEnd + miaF / sumF;
+
+  if (adverseRoll < injuryEnd) return "wounded";
+  if (adverseRoll < captureEnd) return "captured";
+  if (adverseRoll < miaEnd) return "mia";
+  if (effectiveRisk >= killedThreshold) return "killed";
+  return "mia";
+}
+
 const resolveMission = (
   state: GameState,
   mission: MissionInstance,
@@ -962,6 +1185,142 @@ const resolveMission = (
     };
   }
 
+  if (plan.type === "rescue") {
+    const success = true;
+    const nowHours = state.runtime.nowHours;
+    const targetIds = mission.targetPersonnelIds?.length
+      ? mission.targetPersonnelIds
+      : state.runtime.personnel
+          .filter(
+            (p) =>
+              p.status === "captured" && p.capturedLocationId === mission.locationId,
+          )
+          .map((p) => p.id);
+    const updatedPersonnel = state.runtime.personnel.map((person) => {
+      if (!targetIds.includes(person.id)) return person;
+      const { capturedAtHours, capturedLocationId, ...rest } = person;
+      return { ...rest, status: "idle" as const };
+    });
+    const updatedMission: MissionInstance = {
+      ...mission,
+      status: "resolved",
+      remainingHours: 0,
+    };
+    const event: MissionEvent = {
+      id: `event-${Date.now()}`,
+      kind: "mission",
+      missionId: mission.id,
+      planId: mission.planId,
+      status: "resolved",
+      resolvedAtHours: nowHours,
+      success,
+      personnelIds: [...mission.assignedPersonnelIds],
+      rewardsApplied: {},
+      locationId: mission.locationId,
+    };
+    return {
+      ...state,
+      runtime: {
+        ...state.runtime,
+        personnel: updatedPersonnel,
+        missions: state.runtime.missions.map((item) =>
+          item.id === mission.id ? updatedMission : item,
+        ),
+        eventLog: [...state.runtime.eventLog, event],
+      },
+    };
+  }
+
+  if (plan.type === "search") {
+    const nowHours = state.runtime.nowHours;
+    const targetIds = mission.targetPersonnelIds?.length
+      ? mission.targetPersonnelIds
+      : state.runtime.personnel
+          .filter(
+            (p) => p.status === "mia" && p.miaLocationId === mission.locationId,
+          )
+          .map((p) => p.id);
+    const assignedPersonnel = state.runtime.personnel.filter((p) =>
+      mission.assignedPersonnelIds.includes(p.id),
+    );
+    const { chance: successChance } = getMissionSuccessChance(plan, assignedPersonnel);
+    const roll = Math.random();
+    const success = roll <= successChance;
+    const outcomeRoll = Math.random();
+    let outcome: "found" | "intel_captured" | "failed" = "failed";
+    if (success) {
+      if (outcomeRoll < 0.6) outcome = "found";
+      else if (outcomeRoll < 0.85) outcome = "intel_captured";
+    }
+    let updatedPersonnel = state.runtime.personnel;
+    for (const personnelId of targetIds) {
+      const person = updatedPersonnel.find((p) => p.id === personnelId);
+      if (!person || person.status !== "mia") continue;
+      if (outcome === "found") {
+        const wounded = Math.random() < 0.2;
+        updatedPersonnel = updatedPersonnel.map((p) =>
+          p.id !== personnelId
+            ? p
+            : wounded
+              ? {
+                  ...p,
+                  status: "wounded" as const,
+                  woundedAtHours: nowHours,
+                  miaAtHours: undefined,
+                  miaLocationId: undefined,
+                }
+              : {
+                  ...p,
+                  status: "idle" as const,
+                  miaAtHours: undefined,
+                  miaLocationId: undefined,
+                },
+        );
+      } else if (outcome === "intel_captured") {
+        updatedPersonnel = updatedPersonnel.map((p) =>
+          p.id !== personnelId
+            ? p
+            : {
+                ...p,
+                status: "captured" as const,
+                capturedAtHours: nowHours,
+                capturedLocationId: mission.locationId,
+                miaAtHours: undefined,
+                miaLocationId: undefined,
+              },
+        );
+      }
+    }
+    const updatedMission: MissionInstance = {
+      ...mission,
+      status: success ? "resolved" : "failed",
+      remainingHours: 0,
+    };
+    const event: MissionEvent = {
+      id: `event-${Date.now()}`,
+      kind: "mission",
+      missionId: mission.id,
+      planId: mission.planId,
+      status: updatedMission.status,
+      resolvedAtHours: nowHours,
+      success,
+      personnelIds: [...mission.assignedPersonnelIds],
+      rewardsApplied: {},
+      locationId: mission.locationId,
+    };
+    return {
+      ...state,
+      runtime: {
+        ...state.runtime,
+        personnel: updatedPersonnel,
+        missions: state.runtime.missions.map((item) =>
+          item.id === mission.id ? updatedMission : item,
+        ),
+        eventLog: [...state.runtime.eventLog, event],
+      },
+    };
+  }
+
   const assignedPersonnel = state.runtime.personnel.filter((person) =>
     mission.assignedPersonnelIds.includes(person.id),
   );
@@ -980,34 +1339,60 @@ const resolveMission = (
     rewardDirection,
   );
 
-  const injuryChance = balance.missionFailureInjuryChance ?? 0.05;
-  const injured = !success && Math.random() <= injuryChance;
   const nowHours = state.runtime.nowHours;
   const restingMinHours = (balance as { restingMinHours?: number }).restingMinHours ?? 2;
   const successFactor = (balance as { restingAfterSuccessFactor?: number }).restingAfterSuccessFactor ?? 0.25;
   const failureFactor = (balance as { restingAfterFailureFactor?: number }).restingAfterFailureFactor ?? 0.75;
-  const restHours = injured
-    ? 0
-    : Math.max(
-        restingMinHours,
-        plan.durationHours * (success ? successFactor : failureFactor),
-      );
-  const nextStatus: PersonnelStatus = injured ? "wounded" : "resting";
+
   const updatedPersonnel = state.runtime.personnel.map((person) => {
     if (!mission.assignedPersonnelIds.includes(person.id)) {
       return person;
     }
-    if (injured) {
+    const effectiveRisk = getMissionOperationalRisk(state, plan, mission.locationId, [person]);
+    const outcome = rollAdverseOutcome(effectiveRisk, success);
+    const restHours =
+      outcome === "safe"
+        ? Math.max(
+            restingMinHours,
+            plan.durationHours * (success ? successFactor : failureFactor),
+          )
+        : 0;
+
+    if (outcome === "safe") {
+      return {
+        ...person,
+        status: "resting" as const,
+        restingUntilHours: nowHours + restHours,
+      };
+    }
+    if (outcome === "wounded") {
       return {
         ...person,
         status: "wounded" as const,
         woundedAtHours: nowHours,
       };
     }
+    if (outcome === "captured") {
+      return {
+        ...person,
+        status: "captured" as const,
+        capturedAtHours: nowHours,
+        capturedLocationId: mission.locationId,
+      };
+    }
+    if (outcome === "mia") {
+      return {
+        ...person,
+        status: "mia" as const,
+        miaAtHours: nowHours,
+        miaLocationId: mission.locationId,
+      };
+    }
     return {
       ...person,
-      status: "resting" as const,
-      restingUntilHours: nowHours + restHours,
+      status: "killed" as const,
+      killedAtHours: nowHours,
+      killedMissionId: mission.id,
     };
   });
 
@@ -1062,14 +1447,20 @@ const resolveMission = (
     plan.intelRewards.target === "location" &&
     mission.locationId !== "galaxy"
   ) {
-    const { nextState: withIntel, summary } = applyIntelRewards(
-      stateAfterRewards,
-      mission.locationId,
-      plan.intelRewards.keys,
-      plan.intelRewards.quality,
-    );
-    stateAfterRewards = withIntel;
-    intelReport = { summary, keys: plan.intelRewards.keys };
+    const keysToApply =
+      plan.id === "gather-intel" || (plan.intelRewards.keys && plan.intelRewards.keys.length === 0)
+        ? [GATHER_INTEL_KEYS[Math.floor(Math.random() * GATHER_INTEL_KEYS.length)]]
+        : plan.intelRewards.keys;
+    if (keysToApply.length > 0) {
+      const { nextState: withIntel, summary } = applyIntelRewards(
+        stateAfterRewards,
+        mission.locationId,
+        keysToApply,
+        plan.intelRewards.quality,
+      );
+      stateAfterRewards = withIntel;
+      intelReport = { summary, keys: keysToApply };
+    }
   }
 
   const roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> = [];
@@ -1260,7 +1651,7 @@ const resolveMission = (
         );
       }
       person = personnelAfterTraitGains.find((p) => p.id === personnelId)!;
-      if (nextStatus === "wounded" && person) {
+      if (person.status === "wounded") {
         personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
           p.id !== personnelId ? p : tryAddMutableTrait(p, woundedCandidates),
         );
@@ -1549,6 +1940,51 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
         ...nextState.runtime,
         personnel: personnelAfterRest,
       },
+    };
+  }
+
+  const periods24h = Math.max(1, hours / 24);
+  const baseCaptureEscape = (balance as { passiveCaptureEscapeChancePer24h?: number }).passiveCaptureEscapeChancePer24h ?? 0.015;
+  const escapeArtistBonus = (balance as { escapeArtistCaptureBonus?: number }).escapeArtistCaptureBonus ?? 0.02;
+  const personnelAfterCaptureEscape = nextState.runtime.personnel.map((person) => {
+    if (person.status !== "captured") return person;
+    const chancePer24h = baseCaptureEscape + (getTraitsForPerson(person).includes("escape-artist") ? escapeArtistBonus : 0);
+    const chance = 1 - Math.pow(1 - chancePer24h, periods24h);
+    if (Math.random() <= chance) {
+      const { capturedAtHours, capturedLocationId, ...rest } = person;
+      return {
+        ...rest,
+        status: "idle" as const,
+        locationId: capturedLocationId ?? rest.locationId,
+      };
+    }
+    return person;
+  });
+  if (personnelAfterCaptureEscape.some((p, i) => p !== nextState.runtime.personnel[i])) {
+    nextState = {
+      ...nextState,
+      runtime: { ...nextState.runtime, personnel: personnelAfterCaptureEscape },
+    };
+  }
+
+  const passiveMiaReturn = (balance as { passiveMiaReturnChancePer24h?: number }).passiveMiaReturnChancePer24h ?? 0.02;
+  const miaChance = 1 - Math.pow(1 - passiveMiaReturn, periods24h);
+  const personnelAfterMiaReturn = nextState.runtime.personnel.map((person) => {
+    if (person.status !== "mia") return person;
+    if (Math.random() <= miaChance) {
+      const { miaAtHours, miaLocationId, ...rest } = person;
+      return {
+        ...rest,
+        status: "idle" as const,
+        locationId: miaLocationId ?? rest.locationId,
+      };
+    }
+    return person;
+  });
+  if (personnelAfterMiaReturn.some((p, i) => p !== nextState.runtime.personnel[i])) {
+    nextState = {
+      ...nextState,
+      runtime: { ...nextState.runtime, personnel: personnelAfterMiaReturn },
     };
   }
 

@@ -401,6 +401,18 @@ ul {
   color: #94a3b8;
 }
 
+.personnel-status.is-captured {
+  color: #f97316;
+}
+
+.personnel-status.is-mia {
+  color: #a855f7;
+}
+
+.personnel-status.is-killed {
+  color: #6b7280;
+}
+
 .personnel-card:active {
   cursor: grabbing;
 }
@@ -478,6 +490,12 @@ ul {
 .personnel-card.is-selected {
   border-color: #22c55e;
   box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.6);
+}
+
+.personnel-card.is-selected-unavailable {
+  border-color: #6b7280;
+  box-shadow: inset 0 0 0 1px rgba(107, 114, 128, 0.5);
+  cursor: default;
 }
 
 .mission-confirm {
@@ -644,6 +662,39 @@ ul {
 
 .map-panel-body {
   min-height: 440px;
+}
+
+.map-table-wrap {
+  overflow: auto;
+  max-height: 480px;
+}
+
+.map-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.map-table th,
+.map-table td {
+  border: 1px solid #30363d;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.map-table th {
+  background: #161b22;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.map-table tbody tr:nth-child(even) {
+  background: #0d1117;
+}
+
+.map-table tbody tr:hover {
+  background: #21262d;
 }
 
 .map-mode-toggle {
@@ -861,6 +912,12 @@ ul {
   gap: 6px;
   margin-top: 12px;
   font-size: 0.95rem;
+}
+
+.field-hint {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #8b949e;
 }
 
 select {
