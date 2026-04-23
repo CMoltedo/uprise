@@ -6,6 +6,7 @@
       "summary": "Receive medical care at a location; healing time depends on facility quality and tech level.",
       "type": "recovery",
       "availability": { "type": "global" },
+      "persistent": true,
       "requiredRoles": [],
       "durationHours": 48,
       "baseSuccessChance": 1,
@@ -121,7 +122,9 @@
         },
         "items": [
           { "materialId": "blaster-parts", "quantity": 3 },
-          { "materialId": "ship-fuel", "quantity": 2 }
+          { "materialId": "ship-fuel", "quantity": 2 },
+          { "materialId": "explosives", "quantity": 1 },
+          { "materialId": "comm-equipment", "quantity": 1 }
         ],
         "locationAttributes": { "popularSupport": 1 }
       },
@@ -139,6 +142,7 @@
       "summary": "Coordinate relief and gain goodwill across sectors.",
       "type": "logistics",
       "availability": { "type": "global" },
+      "persistent": true,
       "requiredRoles": ["diplomacy", "operations"],
       "requiredMaterials": [
         { "materialId": "med-kits", "quantity": 1, "consumeChance": 0.6 }
@@ -229,7 +233,9 @@
       "summary": "Build trust and bring a new ally into the cause.",
       "type": "recruit-allies",
       "availability": { "type": "global" },
+      "persistent": true,
       "requiredRoles": ["diplomacy"],
+      "creditsCost": 300,
       "durationHours": 18,
       "baseSuccessChance": 0.6,
       "rewards": {
@@ -255,6 +261,9 @@
       "summary": "Structured drills to develop covert skills.",
       "type": "training",
       "requiredRoles": [],
+      "requiredMaterials": [
+        { "materialId": "ration-packs", "quantity": 1, "consumeChance": 0.5 }
+      ],
       "durationHours": 12,
       "baseSuccessChance": 0.85,
       "rewards": {
@@ -303,6 +312,9 @@
       "summary": "Weapons and tactics drills to sharpen fighting skills.",
       "type": "training",
       "requiredRoles": [],
+      "requiredMaterials": [
+        { "materialId": "ration-packs", "quantity": 1, "consumeChance": 0.5 }
+      ],
       "durationHours": 12,
       "baseSuccessChance": 0.85,
       "rewards": { "currency": { "credits": 50, "intel": 0 }, "locationAttributes": { "popularSupport": 1 } },
@@ -351,9 +363,12 @@
       "summary": "Lead a targeted operation against regime assets.",
       "type": "logistics",
       "requiredRoles": ["command", "combat"],
+      "requiredMaterials": [
+        { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 }
+      ],
       "durationHours": 22,
       "baseSuccessChance": 0.6,
-      "rewards": { "currency": { "credits": 450, "intel": 2 }, "locationAttributes": { "garrisonStrength": -5, "patrolFrequency": -3 } },
+      "rewards": { "currency": { "credits": 450, "intel": 2 }, "items": [{ "materialId": "ration-packs", "quantity": 1 }], "locationAttributes": { "garrisonStrength": -5, "patrolFrequency": -3 } },
       "penalties": { "currency": { "credits": -180, "intel": 0 }, "locationAttributes": { "garrisonStrength": 3, "patrolFrequency": 2 } }
     },
     {
@@ -396,9 +411,12 @@
       "summary": "Intercept and decode enemy communications.",
       "type": "espionage",
       "requiredRoles": ["espionage", "knowledge"],
+      "requiredMaterials": [
+        { "materialId": "comm-equipment", "quantity": 1, "consumeChance": 0.4 }
+      ],
       "durationHours": 16,
       "baseSuccessChance": 0.68,
-      "rewards": { "currency": { "credits": 200, "intel": 2 }, "locationAttributes": { "popularSupport": 1 } },
+      "rewards": { "currency": { "credits": 200, "intel": 2 }, "items": [{ "materialId": "forged-documents", "quantity": 1 }], "locationAttributes": { "popularSupport": 1 } },
       "penalties": { "currency": { "credits": -90, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
       "intelRewards": {
         "target": "location",
@@ -412,10 +430,13 @@
       "summary": "Disable or destroy key regime infrastructure.",
       "type": "logistics",
       "requiredRoles": ["combat", "operations"],
-      "requiredMaterials": [{ "materialId": "blaster-parts", "quantity": 2, "consumeChance": 0.6 }],
+      "requiredMaterials": [
+        { "materialId": "blaster-parts", "quantity": 1, "consumeChance": 0.5 },
+        { "materialId": "explosives", "quantity": 1, "consumeChance": 0.9 }
+      ],
       "durationHours": 20,
       "baseSuccessChance": 0.52,
-      "rewards": { "currency": { "credits": 500, "intel": 3 }, "locationAttributes": { "garrisonStrength": -8, "patrolFrequency": -5 } },
+      "rewards": { "currency": { "credits": 500, "intel": 3 }, "items": [{ "materialId": "explosives", "quantity": 1 }], "locationAttributes": { "garrisonStrength": -8, "patrolFrequency": -5 } },
       "penalties": { "currency": { "credits": -220, "intel": 0 }, "locationAttributes": { "garrisonStrength": 3, "patrolFrequency": 2 } }
     },
     {
@@ -424,9 +445,13 @@
       "summary": "Rescue a contact or asset from hostile territory.",
       "type": "logistics",
       "requiredRoles": ["combat", "espionage"],
+      "requiredMaterials": [
+        { "materialId": "forged-documents", "quantity": 1, "consumeChance": 0.8 }
+      ],
+      "creditsCost": 400,
       "durationHours": 20,
       "baseSuccessChance": 0.55,
-      "rewards": { "currency": { "credits": 380, "intel": 2 }, "locationAttributes": { "popularSupport": 1 } },
+      "rewards": { "currency": { "credits": 380, "intel": 2 }, "items": [{ "materialId": "forged-documents", "quantity": 1 }], "locationAttributes": { "popularSupport": 1 } },
       "penalties": { "currency": { "credits": -150, "intel": 0 }, "locationAttributes": { "garrisonStrength": 2 } }
     },
     {
@@ -435,9 +460,12 @@
       "summary": "In-depth surveillance to uncover garrison and patrol patterns.",
       "type": "espionage",
       "requiredRoles": ["espionage"],
+      "requiredMaterials": [
+        { "materialId": "comm-equipment", "quantity": 1, "consumeChance": 0.3 }
+      ],
       "durationHours": 20,
       "baseSuccessChance": 0.6,
-      "rewards": { "currency": { "credits": 200, "intel": 3 }, "locationAttributes": { "popularSupport": 1 } },
+      "rewards": { "currency": { "credits": 200, "intel": 3 }, "items": [{ "materialId": "comm-equipment", "quantity": 1 }], "locationAttributes": { "popularSupport": 1 } },
       "penalties": { "currency": { "credits": -100, "intel": 0 }, "locationAttributes": { "patrolFrequency": 2, "popularSupport": -1 } },
       "intelRewards": {
         "target": "location",
@@ -451,6 +479,7 @@
       "summary": "Spread false intel to disrupt enemy operations.",
       "type": "espionage",
       "requiredRoles": ["espionage", "diplomacy"],
+      "creditsCost": 250,
       "durationHours": 18,
       "baseSuccessChance": 0.65,
       "rewards": { "currency": { "credits": 180, "intel": 2 }, "locationAttributes": { "popularSupport": 1 } },
@@ -463,6 +492,7 @@
       "type": "logistics",
       "requiredRoles": ["operations", "espionage"],
       "requiredMaterials": [{ "materialId": "ship-fuel", "quantity": 3, "consumeChance": 0.8 }],
+      "creditsCost": 350,
       "durationHours": 24,
       "baseSuccessChance": 0.68,
       "rewards": {
@@ -501,6 +531,7 @@
       "type": "recruit-allies",
       "availability": { "type": "global" },
       "requiredRoles": ["diplomacy", "knowledge"],
+      "creditsCost": 500,
       "durationHours": 20,
       "baseSuccessChance": 0.55,
       "rewards": { "currency": { "intel": 1 }, "effects": [{ "type": "new-agent", "data": { "count": 1 } }], "locationAttributes": { "popularSupport": 1 } },
@@ -512,6 +543,7 @@
       "summary": "Distribute messages that build support for the resistance.",
       "type": "logistics",
       "requiredRoles": ["diplomacy", "knowledge"],
+      "creditsCost": 200,
       "durationHours": 16,
       "baseSuccessChance": 0.65,
       "rewards": { "currency": { "credits": 220, "intel": 2 }, "locationAttributes": { "popularSupport": 2 } },
@@ -564,9 +596,9 @@
       "requiredRoles": ["combat", "espionage"],
       "durationHours": 24,
       "baseSuccessChance": 0.55,
-      "baseRiskRating": 0.5,
-      "rewards": { "currency": { "credits": 0, "intel": 1 } },
-      "penalties": { "currency": { "credits": -100, "intel": 0 } }
+      "baseRiskRating": 0.65,
+      "rewards": { "currency": { "credits": 0, "intel": 3 } },
+      "penalties": {}
     },
     {
       "id": "search-agent",
@@ -577,7 +609,7 @@
       "requiredRoles": ["espionage", "operations"],
       "durationHours": 18,
       "baseSuccessChance": 0.6,
-      "baseRiskRating": 0.2,
+      "baseRiskRating": 0.45,
       "rewards": { "currency": { "credits": 0, "intel": 2 } },
       "penalties": { "currency": { "credits": -50, "intel": 0 } }
     },
@@ -587,6 +619,7 @@
       "summary": "Collect intelligence on one aspect of a location; which aspect is uncovered is determined in the field.",
       "type": "espionage",
       "availability": { "type": "global" },
+      "persistent": true,
       "requiredRoles": ["espionage", "diplomacy", "operations", "knowledge"],
       "durationHours": 12,
       "baseSuccessChance": 0.7,
@@ -665,6 +698,69 @@
       "rewards": { "currency": { "credits": 250, "intel": 3 }, "locationAttributes": { "popularSupport": 1 } },
       "penalties": { "currency": { "credits": -120, "intel": 0 }, "locationAttributes": { "popularSupport": -1 } },
       "intelRewards": { "target": "location", "keys": ["garrisonStrength", "patrolFrequency", "customsScrutiny", "resistance", "techLevel", "populationDensity", "popularSupport", "healthcareFacilities"], "quality": "high" }
+    },
+    {
+      "id": "purchase-weapons-cache",
+      "name": "Purchase Weapons Cache",
+      "summary": "Use rebel funds to acquire a stockpile of weapons and explosives from black-market contacts.",
+      "type": "logistics",
+      "availability": { "type": "global" },
+      "requiredRoles": ["operations"],
+      "creditsCost": 600,
+      "durationHours": 16,
+      "baseSuccessChance": 0.9,
+      "rewards": {
+        "currency": { "credits": 0, "intel": 0 },
+        "items": [
+          { "materialId": "blaster-parts", "quantity": 4 },
+          { "materialId": "explosives", "quantity": 3 }
+        ]
+      },
+      "penalties": {
+        "currency": { "credits": 200, "intel": 0 }
+      }
+    },
+    {
+      "id": "purchase-field-supplies",
+      "name": "Purchase Field Supplies",
+      "summary": "Procure medical kits and ration packs for sustained operations.",
+      "type": "logistics",
+      "availability": { "type": "global" },
+      "requiredRoles": ["operations"],
+      "creditsCost": 400,
+      "durationHours": 12,
+      "baseSuccessChance": 0.92,
+      "rewards": {
+        "currency": { "credits": 0, "intel": 0 },
+        "items": [
+          { "materialId": "med-kits", "quantity": 3 },
+          { "materialId": "ration-packs", "quantity": 4 }
+        ]
+      },
+      "penalties": {
+        "currency": { "credits": 150, "intel": 0 }
+      }
+    },
+    {
+      "id": "purchase-intel-equipment",
+      "name": "Purchase Intel Equipment",
+      "summary": "Acquire comm gear and forged documentation from underground suppliers.",
+      "type": "logistics",
+      "availability": { "type": "global" },
+      "requiredRoles": ["espionage"],
+      "creditsCost": 500,
+      "durationHours": 14,
+      "baseSuccessChance": 0.88,
+      "rewards": {
+        "currency": { "credits": 0, "intel": 1 },
+        "items": [
+          { "materialId": "comm-equipment", "quantity": 3 },
+          { "materialId": "forged-documents", "quantity": 2 }
+        ]
+      },
+      "penalties": {
+        "currency": { "credits": 150, "intel": 0 }
+      }
     }
   ],
   "locationAssignments": [
@@ -919,6 +1015,41 @@
       "planId": "intel-quarter-profile",
       "appearanceChance": 0.05,
       "windowHours": 18
+    },
+    {
+      "id": "assign-galaxy-fleet-refuel",
+      "locationId": "galaxy",
+      "planId": "fleet-refuel",
+      "appearanceChance": 0.30,
+      "windowHours": 72
+    },
+    {
+      "id": "assign-galaxy-recruit-specialist",
+      "locationId": "galaxy",
+      "planId": "recruit-specialist",
+      "appearanceChance": 0.20,
+      "windowHours": 96
+    },
+    {
+      "id": "assign-galaxy-purchase-weapons-cache",
+      "locationId": "galaxy",
+      "planId": "purchase-weapons-cache",
+      "appearanceChance": 0.25,
+      "windowHours": 72
+    },
+    {
+      "id": "assign-galaxy-purchase-field-supplies",
+      "locationId": "galaxy",
+      "planId": "purchase-field-supplies",
+      "appearanceChance": 0.25,
+      "windowHours": 72
+    },
+    {
+      "id": "assign-galaxy-purchase-intel-equipment",
+      "locationId": "galaxy",
+      "planId": "purchase-intel-equipment",
+      "appearanceChance": 0.25,
+      "windowHours": 72
     }
   ]
 }

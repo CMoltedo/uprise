@@ -289,6 +289,20 @@ ul {
   animation: dial-flash-inner 900ms ease-out;
 }
 
+.time-dial.is-locked {
+  animation: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pause-locked-hint {
+  text-align: center;
+  font-size: 0.68rem;
+  color: #d29922;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
 .time-dial-label {
   position: absolute;
   inset: 0;
@@ -664,6 +678,19 @@ ul {
   min-height: 440px;
 }
 
+.map-location-info {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #30363d;
+}
+
+.map-location-info-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 8px 0;
+}
+
 .map-table-wrap {
   overflow: auto;
   max-height: 480px;
@@ -851,7 +878,39 @@ ul {
 
 .map-node {
   cursor: pointer;
-  fill: #7dd3fc;
+}
+
+.map-sector-label {
+  font-size: 8px;
+  font-weight: 600;
+  fill: #e6edf3;
+}
+
+@keyframes map-pulse {
+  0%   { r: 7; stroke-opacity: 0.8; }
+  70%  { r: 13; stroke-opacity: 0; }
+  100% { r: 13; stroke-opacity: 0; }
+}
+
+.map-pulse-ring {
+  animation: map-pulse 1.8s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.mission-scope-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.mission-scope-galaxy {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
 }
 
 .map-node.is-drop-over {
@@ -1276,4 +1335,217 @@ button:hover {
   margin-top: 24px;
   padding: 12px 0;
   border-top: 1px solid #30363d;
+}
+
+/* Trait badges with hover tooltips */
+.trait-badge {
+  cursor: default;
+  border-bottom: 1px dotted currentColor;
+  position: relative;
+  display: inline-block;
+}
+.trait-badge::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a2e;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 5px 9px;
+  font-size: 0.75rem;
+  white-space: normal;
+  width: max-content;
+  max-width: 240px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+.trait-badge:hover::after {
+  opacity: 1;
+}
+
+/* Role level pip strips */
+.role-level-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+  font-size: 0.85rem;
+}
+.role-level-pips {
+  display: inline-flex;
+  gap: 2px;
+}
+.role-level-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: #30363d;
+}
+.role-level-pip.filled {
+  background: #58a6ff;
+}
+.role-level-locked {
+  opacity: 0.45;
+  font-style: italic;
+}
+.morale-mod-hint {
+  font-size: 0.78rem;
+  margin-left: 6px;
+}
+.morale-mod-pos { color: #3fb950; }
+.morale-mod-neg { color: #f85149; }
+
+/* Narrative risk badge in choice buttons */
+.narrative-risk-badge {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  color: #d29922;
+  font-weight: 500;
+}
+
+/* Success/failure roll result in event detail */
+.narrative-roll-result {
+  margin-left: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.roll-success { color: #3fb950; }
+.roll-failure { color: #f85149; }
+
+/* Game end overlay */
+.game-end-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.game-end-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 40px 48px;
+  max-width: 480px;
+  text-align: center;
+}
+.game-end-result {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.game-end-result.victory { color: #3fb950; }
+.game-end-result.defeat  { color: #f85149; }
+.game-end-card h2 { font-size: 1.5rem; margin: 0 0 12px; }
+.game-end-card p  { color: #8b949e; margin: 0 0 28px; }
+.game-end-actions { display: flex; gap: 12px; justify-content: center; }
+.button-secondary {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.button-secondary:hover { border-color: #58a6ff; color: #e0e0e0; }
+
+/* Intel grid */
+.intel-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px 8px;
+  margin: 6px 0;
+  font-size: 11px;
+}
+.intel-cell {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.intel-cell.is-unknown { opacity: 0.4; }
+.intel-cell.is-stale .intel-val { opacity: 0.65; }
+.intel-cell .intel-label {
+  color: #6e7681;
+  white-space: nowrap;
+}
+.intel-cell .intel-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.intel-val { color: #e0e0e0; }
+.intel-unknown { color: #555; }
+.intel-stale-badge {
+  font-size: 0.7rem;
+  color: #d29922;
+  border: 1px solid #d29922;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 2px;
+}
+.intel-quality {
+  font-size: 0.7rem;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+/* Morale badges */
+.morale-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.morale-shaken   { color: #d29922; border: 1px solid #d29922; }
+.morale-breaking { color: #f85149; border: 1px solid #f85149; }
+
+.intel-quality-low  { color: #8b949e; border: 1px solid #444; }
+.intel-quality-med  { color: #58a6ff; border: 1px solid #58a6ff; }
+.intel-quality-high { color: #3fb950; border: 1px solid #3fb950; }
+
+/* Narrative event modal */
+.narrative-event-modal { max-width: 520px; }
+.narrative-category-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+.narrative-choices { display: flex; flex-direction: column; gap: 8px; }
+.narrative-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: #1c2128;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.narrative-choice-btn:hover { border-color: #58a6ff; }
+.narrative-choice-label { color: #e0e0e0; font-size: 0.9rem; }
+.narrative-choice-flavor { color: #8b949e; font-size: 0.78rem; margin-top: 3px; }
+.modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #30363d;
+  display: flex;
+  justify-content: flex-end;
 }

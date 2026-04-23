@@ -130,6 +130,26 @@
         "id": "ship-fuel",
         "name": "Ship Fuel",
         "quantity": 12
+      },
+      {
+        "id": "explosives",
+        "name": "Explosives",
+        "quantity": 2
+      },
+      {
+        "id": "forged-documents",
+        "name": "Forged Documents",
+        "quantity": 2
+      },
+      {
+        "id": "comm-equipment",
+        "name": "Comm Equipment",
+        "quantity": 3
+      },
+      {
+        "id": "ration-packs",
+        "name": "Ration Packs",
+        "quantity": 4
       }
     ],
     "missions": [],

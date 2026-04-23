@@ -6,12 +6,18 @@ import {
   getIntelDisplay,
   getLocation,
   getMissionOperationalRisk,
+  getMissionOperationalRiskBreakdown,
   getMissionSuccessChance,
+  getMoraleSuccessModifier,
   getPlanetPopularSupport,
+  getTravelDuration,
   getTraitsForPerson,
   validateAssignment,
+  resolveNarrativeChoice,
+  INTEL_KEY_LABEL,
+  INTEL_DISPLAY_ORDER,
 } from "../engine.js";
-import type { GameRuntime, GameState, Personnel } from "../models.js";
+import type { EnemyActionEvent, GameRuntime, GameState, NarrativeEventDef, NarrativeEventLog, Personnel } from "../models.js";
 import { SPEEDS, getHourOfDay, getUniverseDate } from "../time.js";
 import { serializeSave } from "../persistence.js";
 import { createInitialGameState } from "../game/bootstrap.js";
@@ -22,6 +28,7 @@ import {
   getLocationLabel as buildLocationLabel,
   getPersonnelOptionStyle as buildPersonnelOptionStyle,
   getPersonnelStatusMeta as buildPersonnelStatusMeta,
+  getMoraleIndicator as buildMoraleIndicator,
   getPlanHoursLeftLabel as buildPlanHoursLeftLabel,
   getTravelBlockReason,
   canPersonnelTravel,
@@ -36,6 +43,30 @@ import { HeaderSection } from "./components/HeaderSection.js";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.js";
 import { ToastStack, type ToastMessage } from "./components/ToastStack.js";
 import { EventDetailModal } from "./components/EventDetailModal.js";
+import { TraitBadge, formatTraitLabel } from "./components/TraitBadge.js";
+import { GameEndOverlay } from "./components/GameEndOverlay.js";
+import { NarrativeEventModal } from "./components/NarrativeEventModal.js";
+import narrativeEventsData from "../data/narrativeEvents.json";
+
+const describeEnemyAction = (
+  event: EnemyActionEvent,
+  getPersonnelName: (id: string) => string,
+  getLocLabel: (id: string) => string,
+): string => {
+  const loc = getLocLabel(event.locationId);
+  switch (event.action) {
+    case "patrol-increase":
+      return `Imperial patrols tightened at ${loc}`;
+    case "propaganda":
+      return `Imperial propaganda erodes support at ${loc}`;
+    case "arrest":
+      return `${getPersonnelName(event.personnelId ?? "")} arrested by Imperial forces at ${loc}`;
+    case "counter-op":
+      return `Imperial counter-operation detected at ${loc}`;
+    default:
+      return `Enemy activity at ${loc}`;
+  }
+};
 
 export const App = () => {
   const initialScenario = createInitialGameState();
@@ -43,8 +74,16 @@ export const App = () => {
   const [state, setState] = useState<GameState>(() => initialScenario);
   const data = state.data;
   const runtime = state.runtime;
+
+  const pendingNarrativeEvent = (runtime.narrativePending ?? [])[0] ?? null;
+  const pendingNarrativeDef = pendingNarrativeEvent
+    ? ((narrativeEventsData as { events: NarrativeEventDef[] }).events.find(
+        (d) => d.id === pendingNarrativeEvent.eventId,
+      ) ?? null)
+    : null;
   const [speedIndex, setSpeedIndex] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(true);
+  const [gameEndDismissed, setGameEndDismissed] = useState(false);
   const [mapMode, setMapMode] = useState<"map" | "locations" | "table">("map");
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(
     null,
@@ -270,6 +309,7 @@ export const App = () => {
   const getPlanHoursLeftLabel = (plan: typeof availablePlans[number]) =>
     buildPlanHoursLeftLabel(plan, offerHoursByPlanId, runtime.nowHours);
   const getPersonnelStatusMeta = (person: Personnel) => buildPersonnelStatusMeta(person);
+  const getMoraleIndicator = (person: Personnel) => buildMoraleIndicator(person);
   const getPersonnelOptionStyle = (person: Personnel) =>
     buildPersonnelOptionStyle(person);
   const availablePlans = useMemo(() => {
@@ -284,7 +324,7 @@ export const App = () => {
     const hasMia = runtime.personnel.some((p) => p.status === "mia");
     const crisisPlans = globalPlans.filter(
       (plan) =>
-        (plan.type !== "rescue" && plan.type !== "search") ||
+        plan.persistent ||
         (plan.type === "rescue" && hasCaptured) ||
         (plan.type === "search" && hasMia),
     );
@@ -326,6 +366,17 @@ export const App = () => {
     }
     return map;
   }, [runtime.missions]);
+  const supportToColor = (support: number) =>
+    `hsl(${Math.round(support * 1.2)}, 65%, 48%)`;
+  const enemyStrength = (garrison: number, patrol: number) =>
+    Math.min(1, (garrison + patrol) / 200);
+  const getKnownValue = (locationId: string, key: string): number | undefined => {
+    const snap = runtime.knowledge?.byLocation?.[locationId]?.[key];
+    return snap != null ? (snap.value as number) : undefined;
+  };
+  const hasAnyIntel = (locationId: string): boolean =>
+    Object.keys(runtime.knowledge?.byLocation?.[locationId] ?? {}).length > 0;
+
   const getPlanSortValue = (plan: typeof availablePlans[number]) => {
     const offerHours = offerHoursByPlanId.get(plan.id);
     if (offerHours !== undefined) {
@@ -358,10 +409,11 @@ export const App = () => {
   const sortedAvailablePlans = useMemo(
     () =>
       [...displayPlans].sort((a, b) => {
+        const aGlobal = a.availability?.type === "global" ? 1 : 0;
+        const bGlobal = b.availability?.type === "global" ? 1 : 0;
+        if (aGlobal !== bGlobal) return aGlobal - bGlobal;
         const diff = getPlanSortValue(a) - getPlanSortValue(b);
-        if (diff !== 0) {
-          return diff;
-        }
+        if (diff !== 0) return diff;
         return a.name.localeCompare(b.name);
       }),
     [displayPlans, offerHoursByPlanId, runtime.nowHours],
@@ -444,6 +496,21 @@ export const App = () => {
     }
     return eligible;
   }, [state, selectedPlan, selectedLocationId, locationPersonnel]);
+
+  const rescueSearchTargets = useMemo(() => {
+    if (!selectedPlan || !selectedLocationId) return [];
+    if (selectedPlan.type === "rescue") {
+      return runtime.personnel.filter(
+        (p) => p.status === "captured" && p.capturedLocationId === selectedLocationId,
+      );
+    }
+    if (selectedPlan.type === "search") {
+      return runtime.personnel.filter(
+        (p) => p.status === "mia" && p.miaLocationId === selectedLocationId,
+      );
+    }
+    return [];
+  }, [selectedPlan, selectedLocationId, runtime.personnel]);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const lastEventIdRef = useRef<string | null>(null);
@@ -624,11 +691,58 @@ export const App = () => {
     setState(refreshed);
     setPendingAssignment(null);
     setSelectedPersonnelIds([]);
+    setGameEndDismissed(false);
     const firstEnabled = refreshed.data.locations.find((l) => !l.disabled)?.id ?? refreshed.data.locations[0]?.id ?? "";
     setSelectedLocationId(firstEnabled);
     setTravelDestinationId(firstEnabled);
     pushToast("Game restarted from baseline.");
   };
+  const handleDismissGameEnd = () => setGameEndDismissed(true);
+
+  const handleNarrativeChoice = useCallback(
+    (pendingId: string, choiceId: string) => {
+      const pending = state.runtime.narrativePending?.find((p) => p.id === pendingId);
+      const defs = (narrativeEventsData as { events: NarrativeEventDef[] }).events;
+      const def = pending ? defs.find((d) => d.id === pending.eventId) : undefined;
+      const choice = def?.choices.find((c) => c.id === choiceId);
+      const successChance = (choice as { successChance?: number } | undefined)?.successChance;
+      const success = successChance != null ? Math.random() < successChance : true;
+      setState((prev) => resolveNarrativeChoice(prev, pendingId, choiceId, success));
+      if (choice && def) {
+        const appliedOutcomes = success
+          ? (choice.outcomes as import("../models.js").NarrativeOutcome[])
+          : ((choice as { failureOutcomes?: import("../models.js").NarrativeOutcome[] }).failureOutcomes ?? []);
+        const effectParts = appliedOutcomes
+          .filter((o) => o.type !== "nothing")
+          .map((o) => {
+            if (o.type === "resources") {
+              const parts: string[] = [];
+              if (o.credits) parts.push(`${o.credits > 0 ? "+" : ""}${o.credits} credits`);
+              if (o.intel) parts.push(`${o.intel > 0 ? "+" : ""}${o.intel} intel`);
+              return parts.join(", ");
+            }
+            if (o.type === "material") return `${o.quantity > 0 ? "+" : ""}${o.quantity} ${o.materialId}`;
+            if (o.type === "location-attribute") return `${o.delta > 0 ? "+" : ""}${o.delta} ${o.key}`;
+            return "";
+          })
+          .filter(Boolean)
+          .join(", ");
+        const rollLabel = successChance != null ? (success ? " ✓" : " ✗") : "";
+        const effectLabel = effectParts ? ` — ${effectParts}` : " — No effect";
+        pushToast(`${def.title}: ${choice.label}${rollLabel}${effectLabel}`);
+      }
+    },
+    [state],
+  );
+  const handleNarrativeDismiss = useCallback((pendingId: string) => {
+    setState((prev) => ({
+      ...prev,
+      runtime: {
+        ...prev.runtime,
+        narrativePending: (prev.runtime.narrativePending ?? []).filter((p) => p.id !== pendingId),
+      },
+    }));
+  }, []);
   const handleOpenAdmin = () => {
     localStorage.setItem("uprise-admin-current-draft", serializeSave(runtime));
     window.location.hash = "#/admin";
@@ -641,11 +755,15 @@ export const App = () => {
         alert("Select personnel and destination.");
         return;
       }
+      const person = state.runtime.personnel.find((p) => p.id === travelPersonnelId);
+      const computedHours = person
+        ? getTravelDuration(person.locationId, travelDestinationId, state)
+        : travelHours;
       const next = assignTravel(
         state,
         travelPersonnelId,
         travelDestinationId,
-        travelHours,
+        computedHours,
       );
       setState(next);
     } catch (error) {
@@ -796,10 +914,12 @@ export const App = () => {
     }
   };
 
+  const isPausedEffective = isPaused || pendingNarrativeEvent !== null;
+
   useGameClock({
     initialHours: initialScenario.runtime.nowHours,
     speedIndex,
-    isPaused,
+    isPaused: isPausedEffective,
     setState,
   });
 
@@ -858,7 +978,9 @@ export const App = () => {
             }
             return detail;
           })()
-        : latest.status === "started"
+        : latest.kind === "enemy-action"
+          ? ([{ kind: "text", value: describeEnemyAction(latest, (id) => personnelById.get(id)?.name ?? id, getLocationLabel) }] as const)
+          : latest.kind === "travel" && latest.status === "started"
           ? ([
               makePersonnelPart(latest.personnelId),
               { kind: "text", value: " departed " },
@@ -867,13 +989,16 @@ export const App = () => {
               makeLocationPart(latest.toLocationId),
               { kind: "text", value: ` (${latest.travelHours ?? 0}h)` },
             ] as const)
-          : ([
+          : latest.kind === "travel"
+          ? ([
               makePersonnelPart(latest.personnelId),
               { kind: "text", value: " arrived at " },
               makeLocationPart(latest.toLocationId),
               { kind: "text", value: " from " },
               makeLocationPart(latest.fromLocationId),
-            ] as const);
+            ] as const)
+          : ([] as const);
+    if (parts.length === 0) return;
     const toast = { id: latest.id, parts: [...parts] };
     setToasts((prev) => [...prev, toast]);
     const shouldOpenDetail =
@@ -1024,6 +1149,18 @@ export const App = () => {
         onPersonnelClick={jumpToPersonnel}
         onToastClick={(id) => openEventDetail(id)}
       />
+      {!gameEndDismissed && (
+        <GameEndOverlay state={state} onRestart={handleRestart} onDismiss={handleDismissGameEnd} />
+      )}
+      {pendingNarrativeEvent && pendingNarrativeDef && (
+        <NarrativeEventModal
+          pending={pendingNarrativeEvent}
+          def={pendingNarrativeDef}
+          onChoose={handleNarrativeChoice}
+          onDismiss={handleNarrativeDismiss}
+          getLocationLabel={getLocationLabel}
+        />
+      )}
       {eventDetailEventId ? (
         <EventDetailModal
           event={runtime.eventLog.find((e) => e.id === eventDetailEventId) ?? null}
@@ -1071,8 +1208,9 @@ export const App = () => {
         onOpenAdmin={handleOpenAdmin}
         onRestart={handleRestart}
         speedLabel={SPEEDS[speedIndex]?.label ?? "Normal"}
-        onTogglePause={() => setIsPaused((prev) => !prev)}
-        isPaused={isPaused}
+        onTogglePause={() => { if (!pendingNarrativeEvent) setIsPaused((prev) => !prev); }}
+        isPaused={isPausedEffective}
+        pauseLocked={pendingNarrativeEvent !== null}
         hourFill={hourFill}
         hourOfDay={hourOfDay}
         year={year}
@@ -1228,112 +1366,126 @@ export const App = () => {
             </div>
           ) : mapMode === "map" ? (
             mapLevel === "galaxy" ? (
-              <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
-              {[
-                { x: 5, y: 5 },
-                { x: 61, y: 5 },
-                { x: 5, y: 61 },
-                { x: 61, y: 61 },
-              ].map((position, index) => {
-                const sectorBySlot =
-                  index === 0
-                    ? data.sectors.find((s) => s.id === "core-sector")
-                    : index === 1
-                      ? data.sectors.find((s) => s.id === "rim-sector")
-                      : undefined;
-                const sector = sectorBySlot ?? data.sectors[index];
-                const count = sector
-                  ? personnelCountBySectorId.get(sector.id) ?? 0
-                  : 0;
-                if (!sector) {
-                  return (
-                    <g key={`sector-slot-${index}`}>
-                      <rect
-                        x={position.x}
-                        y={position.y}
-                        width={54}
-                        height={54}
-                        rx={6}
-                        className="map-sector-rect is-empty"
-                      />
-                      <text
-                        x={position.x + 27}
-                        y={position.y + 30}
-                        className="map-label"
-                        textAnchor="middle"
-                      >
-                        Uncharted
-                      </text>
-                    </g>
-                  );
-                }
+              <svg className="map-svg map-svg-large" viewBox="-5 -5 275 130">
+              {data.sectors.map((sector) => {
+                const sectorLocs = data.locations.filter((l) =>
+                  data.planets.find((p) => p.id === l.planetId)?.sectorId === sector.id,
+                );
+                const knownSupportVals = sectorLocs
+                  .map((l) => getKnownValue(l.id, "popularSupport"))
+                  .filter((v): v is number => v != null);
+                const avgSupport = knownSupportVals.length
+                  ? knownSupportVals.reduce((a, b) => a + b, 0) / knownSupportVals.length
+                  : null;
+                const agentCount = personnelCountBySectorId.get(sector.id) ?? 0;
+                const activeMissionCount = runtime.missions.filter(
+                  (m) =>
+                    m.status === "active" &&
+                    data.planets.find(
+                      (p) => p.id === data.locations.find((l) => l.id === m.locationId)?.planetId,
+                    )?.sectorId === sector.id,
+                ).length;
+                const sectorMinX = Math.min(...sector.polygon.map((p) => p.x));
+                const sectorMaxX = Math.max(...sector.polygon.map((p) => p.x));
+                const sectorMinY = Math.min(...sector.polygon.map((p) => p.y));
+                const sectorMaxY = Math.max(...sector.polygon.map((p) => p.y));
+                const centroidX = (sectorMinX + sectorMaxX) / 2;
+                const centroidY = (sectorMinY + sectorMaxY) / 2;
+                const polyPoints = sector.polygon.map((p) => `${p.x},${p.y}`).join(" ");
                 const isSelected = sector.id === selectedSectorId;
+                const sectorPlanetsInGalaxy = data.planets.filter((p) => p.sectorId === sector.id);
+                const fillColor = avgSupport != null ? supportToColor(avgSupport) : "#4b5563";
                 return (
-                  <g
-                    key={sector.id}
-                    className={`map-sector-rect${isSelected ? " selected" : ""}`}
-                    onClick={() => focusSector(sector.id)}
-                  >
-                    <rect x={position.x} y={position.y} width={54} height={54} rx={6} />
-                    <text
-                      x={position.x + 27}
-                      y={position.y + 26}
-                      className="map-label"
-                      textAnchor="middle"
-                    >
+                  <g key={sector.id} onClick={() => focusSector(sector.id)} style={{ cursor: "pointer" }}>
+                    <polygon
+                      points={polyPoints}
+                      fill={fillColor}
+                      fillOpacity={isSelected ? 0.25 : 0.12}
+                      stroke={isSelected ? fillColor : "#30363d"}
+                      strokeWidth={isSelected ? 1.5 : 0.75}
+                    />
+                    {sectorPlanetsInGalaxy.map((planet) => {
+                      const planetLocs = sectorLocs.filter((l) => l.planetId === planet.id);
+                      const pKnown = planetLocs
+                        .map((l) => getKnownValue(l.id, "popularSupport"))
+                        .filter((v): v is number => v != null);
+                      const planetSupport = pKnown.length
+                        ? pKnown.reduce((a, b) => a + b, 0) / pKnown.length
+                        : null;
+                      const hasAgents = (personnelCountByPlanetId.get(planet.id) ?? 0) > 0;
+                      return (
+                        <circle
+                          key={planet.id}
+                          cx={sectorMinX + planet.position.x}
+                          cy={planet.position.y}
+                          r={hasAgents ? 2.5 : 1.5}
+                          fill={planetSupport != null ? supportToColor(planetSupport) : "#4b5563"}
+                          fillOpacity={0.85}
+                        />
+                      );
+                    })}
+                    <text x={centroidX} y={centroidY - 4} className="map-label map-sector-label" textAnchor="middle">
                       {sector.name}
                     </text>
-                    <text
-                      x={position.x + 27}
-                      y={position.y + 40}
-                      className="map-label"
-                      textAnchor="middle"
-                    >
-                      {count} agents
+                    <text x={centroidX} y={centroidY + 7} className="map-label" textAnchor="middle">
+                      {agentCount} agents{activeMissionCount > 0 ? ` · ${activeMissionCount} ops` : ""}
                     </text>
+                    {avgSupport != null && (
+                      <text x={centroidX} y={centroidY + 16} className="map-label" textAnchor="middle">
+                        {Math.round(avgSupport)}% support
+                      </text>
+                    )}
                   </g>
                 );
               })}
             </svg>
             ) : mapLevel === "sector" ? (
             <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
-              {sectorPlanets.map((planet) => (
-                <g key={planet.id}>
-                  <circle
-                    cx={planet.position.x}
-                    cy={planet.position.y}
-                    r={6}
-                    className="map-node"
-                    onClick={() => {
-                      setSelectedPlanetId(planet.id);
-                      setMapLevel("planet");
-                      const firstLocation = data.locations.find(
-                        (location) =>
-                          location.planetId === planet.id && !location.disabled,
-                      ) ?? data.locations.find(
-                        (location) => location.planetId === planet.id,
-                      );
-                      if (firstLocation) {
-                        setSelectedLocationId(firstLocation.id);
-                      }
-                    }}
-                  />
-                  <text
-                    x={planet.position.x + 8}
-                    y={planet.position.y + 4}
-                    className="map-label"
-                  >
-                    {planet.name}
-                  </text>
-                  <text
-                    x={planet.position.x + 8}
-                    y={planet.position.y + 12}
-                    className="map-label"
-                  >
-                    {personnelCountByPlanetId.get(planet.id) ?? 0} agents
-                  </text>
-                </g>
-              ))}
+              {sectorPlanets.map((planet) => {
+                const planetLocs = data.locations.filter((l) => l.planetId === planet.id && !l.disabled);
+                const knownSupportVals = planetLocs.map((l) => getKnownValue(l.id, "popularSupport")).filter((v): v is number => v != null);
+                const knownGarrisonVals = planetLocs.map((l) => getKnownValue(l.id, "garrisonStrength")).filter((v): v is number => v != null);
+                const knownPatrolVals = planetLocs.map((l) => getKnownValue(l.id, "patrolFrequency")).filter((v): v is number => v != null);
+                const avgSupport = knownSupportVals.length ? knownSupportVals.reduce((a, b) => a + b, 0) / knownSupportVals.length : null;
+                const avgGarrison = knownGarrisonVals.length ? knownGarrisonVals.reduce((a, b) => a + b, 0) / knownGarrisonVals.length : 0;
+                const avgPatrol = knownPatrolVals.length ? knownPatrolVals.reduce((a, b) => a + b, 0) / knownPatrolVals.length : 0;
+                const strength = enemyStrength(avgGarrison, avgPatrol);
+                const hasMission = planetLocs.some((l) => missionsByLocationId.has(l.id));
+                const agentCount = personnelCountByPlanetId.get(planet.id) ?? 0;
+                const nodeColor = avgSupport != null ? supportToColor(avgSupport) : "#4b5563";
+                const handleClick = () => {
+                  setSelectedPlanetId(planet.id);
+                  setMapLevel("planet");
+                  const firstLocation = data.locations.find((l) => l.planetId === planet.id && !l.disabled)
+                    ?? data.locations.find((l) => l.planetId === planet.id);
+                  if (firstLocation) setSelectedLocationId(firstLocation.id);
+                };
+                return (
+                  <g key={planet.id} onClick={handleClick} style={{ cursor: "pointer" }}>
+                    {strength > 0.1 && (
+                      <circle cx={planet.position.x} cy={planet.position.y} r={9}
+                        fill="none" stroke="#f85149"
+                        strokeWidth={strength * 3} strokeOpacity={0.4 + strength * 0.4} />
+                    )}
+                    {hasMission && (
+                      <circle cx={planet.position.x} cy={planet.position.y} r={11}
+                        fill="none" stroke="#f0c040" className="map-pulse-ring" strokeWidth={1} />
+                    )}
+                    <circle
+                      cx={planet.position.x} cy={planet.position.y} r={6}
+                      fill={nodeColor}
+                      stroke={agentCount > 0 ? "#e6edf3" : "none"} strokeWidth={0.75}
+                      className="map-node"
+                    />
+                    {agentCount > 0 && (
+                      <circle cx={planet.position.x + 5} cy={planet.position.y - 5} r={2} fill="#58a6ff" />
+                    )}
+                    <text x={planet.position.x + 8} y={planet.position.y + 4} className="map-label">
+                      {planet.name}
+                    </text>
+                  </g>
+                );
+              })}
             </svg>
             ) : (
             <svg className="map-svg map-svg-large" viewBox="0 0 120 120">
@@ -1343,9 +1495,22 @@ export const App = () => {
                   : null;
                 const canDrop = canTravelTo(dragPerson, location.id);
                 const isOver = mapDropLocationId === location.id;
+                const agentCount = personnelByLocationId.get(location.id)?.length ?? 0;
+                const hasMission = missionsByLocationId.has(location.id);
+                const intel = hasAnyIntel(location.id);
+                const knownSupport = getKnownValue(location.id, "popularSupport");
+                const knownGarrison = getKnownValue(location.id, "garrisonStrength");
+                const knownPatrol = getKnownValue(location.id, "patrolFrequency");
+                const strength = (knownGarrison != null && knownPatrol != null)
+                  ? enemyStrength(knownGarrison, knownPatrol) : 0;
+                const isUnknown = !intel && agentCount === 0;
+                const nodeColor = isUnknown ? "#30363d" : knownSupport != null
+                  ? supportToColor(knownSupport) : "#4b5563";
+                const nodeOpacity = isUnknown ? 0.4 : location.disabled ? 0.25 : 1;
                 return (
                 <g
                   key={location.id}
+                  style={{ opacity: nodeOpacity }}
                   onDragOver={(event) => {
                     event.preventDefault();
                     setMapDropLocationId(location.id);
@@ -1353,10 +1518,35 @@ export const App = () => {
                   onDragLeave={() => setMapDropLocationId(null)}
                   onDrop={handleDropOnLocation(location.id)}
                 >
+                  {strength > 0.1 && (
+                    <circle
+                      cx={location.position.x}
+                      cy={location.position.y}
+                      r={6}
+                      fill="none"
+                      stroke="#f85149"
+                      strokeWidth={strength * 3}
+                      strokeOpacity={0.35 + strength * 0.5}
+                    />
+                  )}
+                  {hasMission && (
+                    <circle
+                      cx={location.position.x}
+                      cy={location.position.y}
+                      r={8}
+                      fill="none"
+                      stroke="#f0c040"
+                      className="map-pulse-ring"
+                      strokeWidth={1}
+                    />
+                  )}
                   <circle
                     cx={location.position.x}
                     cy={location.position.y}
                     r={4}
+                    fill={nodeColor}
+                    stroke={agentCount > 0 ? "#e6edf3" : "none"}
+                    strokeWidth={0.75}
                     className={`map-node map-drop-target${
                       isOver
                         ? canDrop
@@ -1366,19 +1556,20 @@ export const App = () => {
                     }`}
                     onClick={() => setSelectedLocationId(location.id)}
                   />
+                  {agentCount > 0 && (
+                    <circle
+                      cx={location.position.x + 4}
+                      cy={location.position.y - 4}
+                      r={1.5}
+                      fill="#58a6ff"
+                    />
+                  )}
                   <text
                     x={location.position.x + 6}
                     y={location.position.y + 4}
                     className="map-label"
                   >
-                    {location.name}
-                  </text>
-                  <text
-                    x={location.position.x + 6}
-                    y={location.position.y + 12}
-                    className="map-label"
-                  >
-                    {personnelByLocationId.get(location.id)?.length ?? 0} agents
+                    {isUnknown ? "???" : location.name}
                   </text>
                 </g>
               )})}
@@ -1588,47 +1779,45 @@ export const App = () => {
         <div className="meta">
           Selected: {getLocationLabel(selectedLocationId)}
         </div>
-      </section>
-
-      <section className="grid">
-        <div className="card">
-          <div className="map-breadcrumbs location-breadcrumbs">
-            <button type="button" onClick={() => setMapLevel("galaxy")}>
-              Galaxy
-            </button>
-            {mapLevel !== "galaxy" ? (
-              <button
-                type="button"
-                onClick={() => selectedSectorId && setMapLevel("sector")}
-                disabled={!selectedSectorId}
-              >
-                {sectorById.get(selectedSectorId)?.name ?? "Sector"}
-              </button>
-            ) : null}
-            {mapLevel === "planet" ? (
-              <button
-                type="button"
-                onClick={() => selectedPlanetId && setMapLevel("planet")}
-                disabled={!selectedPlanetId}
-              >
-                {planetById.get(selectedPlanetId)?.name ?? "Planet"}
-              </button>
-            ) : null}
-          </div>
-          <h2>Location Info - {getContextLabel()}</h2>
+        <div className="map-location-info">
+          <h3 className="map-location-info-title">Location Info — {getContextLabel()}</h3>
           {selectedLocation ? (
-            <div className="meta">
-              {getLocationLabel(selectedLocation.id)}
-              <div className="meta">
-                Resistance {formatIntel(selectedLocation.id, "resistance")} · Tech{" "}
-                {formatIntel(selectedLocation.id, "techLevel")} · Population{" "}
-                {formatIntel(selectedLocation.id, "populationDensity")} · Popular support{" "}
-                {formatIntel(selectedLocation.id, "popularSupport")}
-              </div>
-              <div className="meta">
-                Customs {formatIntel(selectedLocation.id, "customsScrutiny")} · Patrols{" "}
-                {formatIntel(selectedLocation.id, "patrolFrequency")} · Garrison{" "}
-                {formatIntel(selectedLocation.id, "garrisonStrength")}
+            <div>
+              <div className="meta">{getLocationLabel(selectedLocation.id)}</div>
+              <div className="intel-grid">
+                {INTEL_DISPLAY_ORDER.map((key) => {
+                  const d = getIntelDisplay(state, selectedLocation.id, key);
+                  const snapshot = state.runtime.knowledge?.byLocation?.[selectedLocation.id]?.[key];
+                  return (
+                    <div
+                      key={key}
+                      className={`intel-cell${
+                        d.status === "stale" ? " is-stale" : d.status === "unknown" ? " is-unknown" : ""
+                      }`}
+                    >
+                      <span className="intel-label">{INTEL_KEY_LABEL[key] ?? key}</span>
+                      <span className="intel-value">
+                        {d.status === "unknown" ? (
+                          <span className="intel-unknown">?</span>
+                        ) : (
+                          <>
+                            <span className="intel-val">
+                              {Array.isArray(d.value)
+                                ? d.value.length === 0 ? "none" : d.value.join(", ")
+                                : d.value}
+                            </span>
+                            {snapshot?.quality && (
+                              <span className={`intel-quality intel-quality-${snapshot.quality}`}>
+                                {snapshot.quality}
+                              </span>
+                            )}
+                            {d.status === "stale" && <span className="intel-stale-badge">stale</span>}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
               {selectedLocation.planetId ? (
                 <div className="meta">
@@ -1640,12 +1829,23 @@ export const App = () => {
           ) : (
             <div className="meta">Select a location to see details.</div>
           )}
+        </div>
+      </section>
+
+      <section className="grid">
+        <div className="card">
           <div className="meta">Personnel in view: {locationPersonnel.length}</div>
           {locationPersonnel.length === 0 ? (
             <p>No personnel at this location.</p>
           ) : (
             <div className="personnel-cards">
-              {locationPersonnel.map((person) => {
+              {[...locationPersonnel].sort((a, b) => {
+                const rank = (s: string) =>
+                  s === "idle" ? 0
+                  : s === "wounded" || s === "captured" || s === "mia" ? 1
+                  : 2;
+                return rank(a.status) - rank(b.status);
+              }).map((person) => {
                 const contextPlanId = dragPersonnelId ? hoverPlanId : selectedPlanId;
                 const contextPlan = contextPlanId ? planById.get(contextPlanId) : null;
                 const cannotTrainForThisPlan =
@@ -1718,12 +1918,22 @@ export const App = () => {
                     >
                       {getPersonnelStatusMeta(person).label}
                     </span>
+                    {getMoraleIndicator(person) && (
+                      <span className={`morale-badge ${getMoraleIndicator(person)!.className}`}>
+                        {getMoraleIndicator(person)!.label}
+                      </span>
+                    )}
                   </div>
                   <div className="meta">
                     {formatRolesWithLevel(person)}
                   </div>
                   <div className="meta">
-                    Traits: {getTraitsForPerson(person).join(", ") || "none"}
+                    Traits:{" "}
+                    {getTraitsForPerson(person).length
+                      ? getTraitsForPerson(person).map((t, i) => (
+                          <span key={t}>{i > 0 && ", "}<TraitBadge id={t} /></span>
+                        ))
+                      : "none"}
                   </div>
                   <div className="meta">
                     <button
@@ -1787,10 +1997,52 @@ export const App = () => {
                     <span className={`personnel-status ${statusMeta.className}`}>
                       {statusMeta.label}
                     </span>
+                    {getMoraleIndicator(person) && (
+                      <span className={`morale-badge ${getMoraleIndicator(person)!.className}`}>
+                        {getMoraleIndicator(person)!.label}
+                      </span>
+                    )}
                   </div>
-                  <div className="meta">Roles: {formatRolesWithLevel(person)}</div>
+                  <div>
+                    Morale: {person.morale ?? 50}/100
+                    {(() => {
+                      const mod = getMoraleSuccessModifier(person);
+                      if (mod === 0) return null;
+                      return (
+                        <span className={`meta morale-mod-hint ${mod > 0 ? "morale-mod-pos" : "morale-mod-neg"}`}>
+                          {" "}{mod > 0 ? "+" : ""}{Math.round(mod * 100)}% mission chance
+                        </span>
+                      );
+                    })()}
+                  </div>
                   <div className="meta">
-                    Traits: {getTraitsForPerson(person).join(", ") || "none"}
+                    Roles:
+                    {(person.roles ?? []).map((roleId) => {
+                      const level = person.roleLevels?.[roleId] ?? 1;
+                      return (
+                        <div key={roleId} className="role-level-row">
+                          <span>{formatRoleLabel(roleId)} {level}</span>
+                          <span className="role-level-pips">
+                            {Array.from({ length: 10 }, (_, i) => (
+                              <span key={i} className={`role-level-pip${i < level ? " filled" : ""}`} />
+                            ))}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {Array.from({ length: Math.max(0, 3 - (person.roles ?? []).length) }, (_, i) => (
+                      <div key={`locked-${i}`} className="role-level-row role-level-locked">
+                        <span className="meta">— locked slot (train to unlock)</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="meta">
+                    Traits:{" "}
+                    {getTraitsForPerson(person).length
+                      ? getTraitsForPerson(person).map((t, i) => (
+                          <span key={t}>{i > 0 && ", "}<TraitBadge id={t} /></span>
+                        ))
+                      : "none"}
                   </div>
                   <div className="meta">
                     Location:{" "}
@@ -1845,19 +2097,20 @@ export const App = () => {
                 isPending && pendingPersonnel.length > 0
                   ? getMissionSuccessChance(plan, pendingPersonnel)
                   : null;
-              const pendingRisk =
+              const pendingRiskBreakdown =
                 isPending &&
                 pendingPersonnel.length > 0 &&
                 selectedLocationId &&
                 selectedLocationId !== "galaxy" &&
                 plan.type !== "recovery"
-                  ? getMissionOperationalRisk(
+                  ? getMissionOperationalRiskBreakdown(
                       state,
                       plan,
                       selectedLocationId,
                       pendingPersonnel,
                     )
                   : null;
+              const pendingRisk = pendingRiskBreakdown?.risk ?? null;
               const baseSuccessPercent = Math.round(plan.baseSuccessChance * 100);
               const pendingSuccessPercent = pendingSuccessInfo
                 ? Math.round(pendingSuccessInfo.chance * 100)
@@ -1924,6 +2177,9 @@ export const App = () => {
                 onMouseLeave={() => setHoverPlanId(null)}
               >
                 <strong>{plan.name}</strong>
+                {plan.availability?.type === "global" && (
+                  <span className="mission-scope-badge mission-scope-galaxy">◈ Galaxy</span>
+                )}
                 <div className="meta">{plan.summary}</div>
                 <div className="meta">
                   Required roles:{" "}
@@ -1939,14 +2195,50 @@ export const App = () => {
                     ? ` → ${pendingSuccessPercent}%`
                     : ""}
                 </div>
-                {pendingRisk !== null ? (
-                  <div className="meta">
-                    Risk: {Math.round(pendingRisk * 100)}%
-                  </div>
-                ) : null}
+                {pendingRiskBreakdown !== null ? (() => {
+                  const { risk, base, locationFactor, mitigation } = pendingRiskBreakdown;
+                  const riskLocationKeys = ["customsScrutiny", "patrolFrequency", "garrisonStrength", "techLevel", "resistance", "popularSupport"];
+                  const locKnowledge = selectedLocationId
+                    ? state.runtime.knowledge?.byLocation?.[selectedLocationId] ?? {}
+                    : {};
+                  const hasLocationIntel = riskLocationKeys.some((k) => locKnowledge[k] !== undefined);
+                  const locationStr = hasLocationIntel
+                    ? `× Location: ${locationFactor.toFixed(2)}`
+                    : `× Location: ? (no intel)`;
+                  const tip =
+                    `Base: ${Math.round(base * 100)}%` +
+                    ` ${locationStr}` +
+                    ` − Mitigation: ${Math.round(mitigation * 100)}%` +
+                    ` = ${Math.round(risk * 100)}%`;
+                  return (
+                    <div className="meta">
+                      Risk:{" "}
+                      <span className="trait-badge" data-tooltip={tip}>
+                        {Math.round(risk * 100)}%
+                      </span>
+                    </div>
+                  );
+                })() : null}
                 {isGlobalCooldown ? (
                   <div className="meta">
                     Cooldown: {Math.ceil(activeMission?.remainingHours ?? 0)}h left
+                  </div>
+                ) : null}
+                {plan.type === "training" && plan.trainingReward && pendingPersonnel.length > 0 ? (
+                  <div className="meta">
+                    Training chance:{" "}
+                    {pendingPersonnel.map((p, i) => {
+                      const attempts =
+                        state.runtime.trainingAttemptsWithoutGain?.[p.id]?.[plan.id] ?? 0;
+                      const chance = Math.min(1, 0.12 + attempts * 0.08);
+                      return (
+                        <span key={p.id}>
+                          {i > 0 && ", "}
+                          {p.name}: {Math.round(chance * 100)}%
+                          {attempts > 0 ? ` (${attempts} prior attempt${attempts !== 1 ? "s" : ""})` : ""}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : null}
                 {pendingSuccessInfo ? (
@@ -2007,6 +2299,14 @@ export const App = () => {
                         ? ` (${pendingSuccessInfo.roleModifier.penalties.join(", ")})`
                         : ""}
                     </div>
+                    {pendingSuccessInfo.moraleModifier !== 0 && (
+                      <div className="meta">
+                        Morale:{" "}
+                        <span className={`success-modifier ${pendingSuccessInfo.moraleModifier > 0 ? "is-positive" : "is-negative"}`}>
+                          {pendingSuccessInfo.moraleModifier > 0 ? "+" : ""}{Math.round(pendingSuccessInfo.moraleModifier * 100)}%
+                        </span>
+                      </div>
+                    )}
                   </>
                 ) : null}
                 {isPending ? (
@@ -2123,6 +2423,17 @@ export const App = () => {
               <div className="meta assignment-details-item">
                 Roles: {detailPlan.requiredRoles.join(", ")}
               </div>
+              {detailPlan.creditsCost ? (
+                <div
+                  className={`meta assignment-details-item${
+                    runtime.resources.credits < detailPlan.creditsCost
+                      ? " requirement-unmet"
+                      : ""
+                  }`}
+                >
+                  Cost: {detailPlan.creditsCost} credits (have {runtime.resources.credits})
+                </div>
+              ) : null}
               {detailPlan.requiredMaterials?.length ? (
                 <div className="meta assignment-details-item">
                   Materials:
@@ -2147,6 +2458,25 @@ export const App = () => {
               ) : (
                 <div className="meta assignment-details-item">Materials: none</div>
               )}
+              {(detailPlan.type === "rescue" || detailPlan.type === "search") &&
+              rescueSearchTargets.length > 0 ? (
+                <>
+                  <div className="meta assignment-details-section">
+                    {detailPlan.type === "rescue" ? "Captured at this location" : "MIA at this location"}
+                  </div>
+                  {rescueSearchTargets.map((p) => {
+                    const sinceHours =
+                      detailPlan.type === "rescue"
+                        ? runtime.nowHours - (p.capturedAtHours ?? runtime.nowHours)
+                        : runtime.nowHours - (p.miaAtHours ?? runtime.nowHours);
+                    return (
+                      <div key={p.id} className="meta assignment-details-item">
+                        {p.name} — {p.roles.join(", ")} — {Math.round(sinceHours)}h ago
+                      </div>
+                    );
+                  })}
+                </>
+              ) : null}
               <div className="meta assignment-details-section">Rewards</div>
               {detailPlan.rewards?.currency ? (
                 <div className="meta assignment-details-item">
@@ -2221,7 +2551,12 @@ export const App = () => {
               {activeMissionsAll.map((mission) => (
                 <li key={mission.id}>
                   {planById.get(mission.planId)?.name ?? mission.planId} ·{" "}
-                  {getLocationLabel(mission.locationId)} · {mission.remainingHours}h
+                  {mission.locationId === "galaxy" ? (
+                    <span className="mission-scope-badge mission-scope-galaxy">◈ Galaxy</span>
+                  ) : (
+                    getLocationLabel(mission.locationId)
+                  )}{" "}
+                  · {mission.remainingHours}h
                   left · pers{" "}
                   {mission.assignedPersonnelIds
                     .map((id) => personnelById.get(id)?.name ?? id)
@@ -2259,7 +2594,7 @@ export const App = () => {
                     style={getPersonnelOptionStyle(person)}
                   >
                     {person.name} · {formatRolesWithLevel(person)} ·{" "}
-                    {getTraitsForPerson(person).join(", ") || "no traits"} ·{" "}
+                    {getTraitsForPerson(person).map(formatTraitLabel).join(", ") || "no traits"} ·{" "}
                     {canTravel
                       ? `${person.status} · ${getLocationLabel(person.locationId)}`
                       : `${person.status} (${blockReason}) — cannot travel`}
@@ -2281,15 +2616,14 @@ export const App = () => {
               ))}
             </select>
           </label>
-          <label className="field">
-            Travel time (hours)
-            <input
-              type="number"
-              min={1}
-              value={travelHours}
-              onChange={(event) => setTravelHours(Number(event.target.value))}
-            />
-          </label>
+          {travelPersonnelId && travelDestinationId && (() => {
+            const person = state.runtime.personnel.find((p) => p.id === travelPersonnelId);
+            if (!person) return null;
+            const hours = getTravelDuration(person.locationId, travelDestinationId, state);
+            return (
+              <div className="meta">Travel time: {hours}h</div>
+            );
+          })()}
           <div className="actions">
             <button
               type="button"
@@ -2348,7 +2682,9 @@ export const App = () => {
                     className="event-log-entry"
                     onClick={() => openEventDetail(event.id)}
                   >
-                    {event.kind === "mission"
+                    {event.kind === "enemy-action"
+                      ? describeEnemyAction(event as EnemyActionEvent, (id) => personnelById.get(id)?.name ?? id, getLocationLabel)
+                      : event.kind === "mission"
                       ? `${event.success ? "Successful" : "Failed"} ${planById.get(event.planId)?.name ?? event.planId} mission by ${
                           event.personnelIds
                             .map((id) => personnelById.get(id)?.name ?? id)
@@ -2367,13 +2703,40 @@ export const App = () => {
                                 .join("; ")}`
                             : ""
                         }`
-                      : event.status === "started"
+                      : event.kind === "travel" && event.status === "started"
                         ? `${personnelById.get(event.personnelId)?.name ?? event.personnelId} departed ${
                             getLocationLabel(event.fromLocationId)
                           } for ${getLocationLabel(event.toLocationId)} (${event.travelHours ?? 0}h)`
-                        : `${personnelById.get(event.personnelId)?.name ?? event.personnelId} arrived at ${
+                        : event.kind === "travel"
+                        ? `${personnelById.get(event.personnelId)?.name ?? event.personnelId} arrived at ${
                             getLocationLabel(event.toLocationId)
-                          } from ${getLocationLabel(event.fromLocationId)}`}
+                          } from ${getLocationLabel(event.fromLocationId)}${"hazard" in event && event.hazard ? ` — intercepted! (${event.hazard})` : ""}`
+                        : event.kind === "narrative"
+                        ? (() => {
+                            const ne = event as NarrativeEventLog;
+                            const neDefs = (narrativeEventsData as { events: NarrativeEventDef[] }).events;
+                            const neDef = neDefs.find((d) => d.id === ne.eventId);
+                            const neChoice = neDef?.choices.find((c) => c.id === ne.choiceId);
+                            const neEffects = (ne.outcomes as import("../models.js").NarrativeOutcome[])
+                              .filter((o) => o.type !== "nothing")
+                              .map((o) => {
+                                if (o.type === "resources") {
+                                  const ps: string[] = [];
+                                  if (o.credits) ps.push(`${o.credits > 0 ? "+" : ""}${o.credits} cr`);
+                                  if (o.intel) ps.push(`${o.intel > 0 ? "+" : ""}${o.intel} intel`);
+                                  return ps.join(", ");
+                                }
+                                if (o.type === "material") return `${o.quantity > 0 ? "+" : ""}${o.quantity} ${o.materialId}`;
+                                if (o.type === "location-attribute") return `${o.delta > 0 ? "+" : ""}${o.delta} ${o.key}`;
+                                return "";
+                              })
+                              .filter(Boolean)
+                              .join(", ");
+                            const rollLabel = ne.choiceSuccess != null ? (ne.choiceSuccess ? " ✓" : " ✗") : "";
+                            const effectLabel = neEffects ? ` — ${neEffects}` : "";
+                            return `${neDef?.title ?? ne.eventId}: ${neChoice?.label ?? ne.choiceId}${rollLabel}${effectLabel}`;
+                          })()
+                        : ""}
                   </button>
                 </li>
               ))}

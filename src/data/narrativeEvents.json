@@ -1,0 +1,239 @@
+{
+  "events": [
+    {
+      "id": "supply-cache",
+      "category": "windfall",
+      "title": "Hidden Supply Cache",
+      "body": "A hidden rebel supply cache has been discovered near your position. It looks untouched — but moving it carries some risk.",
+      "choices": [
+        {
+          "id": "claim",
+          "label": "Claim it quietly",
+          "flavor": "Recover the supplies under cover of darkness.",
+          "outcomes": [
+            { "type": "material", "materialId": "med-kits", "quantity": 2 },
+            { "type": "material", "materialId": "blaster-parts", "quantity": 1 }
+          ]
+        },
+        {
+          "id": "leave",
+          "label": "Leave it — too risky",
+          "flavor": "Better safe than sorry.",
+          "outcomes": [{ "type": "nothing" }]
+        }
+      ]
+    },
+    {
+      "id": "anonymous-tip",
+      "category": "windfall",
+      "title": "Anonymous Dead Drop",
+      "body": "An encrypted message arrives with coordinates for a dead drop. The sender is unknown but the information looks credible.",
+      "choices": [
+        {
+          "id": "investigate",
+          "label": "Send someone to investigate",
+          "flavor": "The drop contains credits and useful intelligence — if it's real.",
+          "successChance": 0.70,
+          "outcomes": [
+            { "type": "resources", "credits": 200, "intel": 2 }
+          ],
+          "failureOutcomes": [
+            { "type": "resources", "credits": -50 },
+            { "type": "location-attribute", "key": "patrolFrequency", "delta": 5 }
+          ]
+        },
+        {
+          "id": "ignore",
+          "label": "Ignore it — could be a trap",
+          "flavor": "You can't afford to take chances.",
+          "outcomes": [{ "type": "nothing" }]
+        }
+      ]
+    },
+    {
+      "id": "safehouse-compromise",
+      "category": "threat",
+      "title": "Safehouse Compromised",
+      "body": "Intel suggests Imperial agents may have identified one of your safehouses. You have a narrow window to act.",
+      "choices": [
+        {
+          "id": "evacuate",
+          "label": "Evacuate immediately",
+          "flavor": "Relocation is costly but personnel stay safe.",
+          "outcomes": [
+            { "type": "resources", "credits": -150 }
+          ]
+        },
+        {
+          "id": "monitor",
+          "label": "Stay put and monitor",
+          "flavor": "You gather useful intel but local trust erodes.",
+          "outcomes": [
+            { "type": "resources", "intel": 1 },
+            { "type": "location-attribute", "key": "popularSupport", "delta": -10 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comms-intercept",
+      "category": "threat",
+      "title": "Communications Flagged",
+      "body": "Signals analysis suggests your comm frequencies have been flagged by Imperial monitoring stations. You need to respond.",
+      "choices": [
+        {
+          "id": "new-protocols",
+          "label": "Switch to new protocols",
+          "flavor": "Burn a comm unit to secure your network.",
+          "outcomes": [
+            { "type": "material", "materialId": "comm-equipment", "quantity": -1 }
+          ]
+        },
+        {
+          "id": "disinformation",
+          "label": "Broadcast disinformation",
+          "flavor": "Feed them noise and gather intel from their response.",
+          "outcomes": [
+            { "type": "resources", "intel": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "defector-contact",
+      "category": "opportunity",
+      "title": "Imperial Defector",
+      "body": "A low-ranking Imperial officer reaches out claiming to have information to sell. The risk is real — but so is the opportunity.",
+      "choices": [
+        {
+          "id": "pay",
+          "label": "Pay for the intel",
+          "flavor": "A significant investment, but the data is solid.",
+          "outcomes": [
+            { "type": "resources", "credits": -300, "intel": 5 }
+          ]
+        },
+        {
+          "id": "refuse",
+          "label": "Refuse — can't trust them",
+          "flavor": "Too many defectors have turned out to be plants.",
+          "outcomes": [{ "type": "nothing" }]
+        },
+        {
+          "id": "string-along",
+          "label": "String them along",
+          "flavor": "Partial information, no payment — and no commitment.",
+          "outcomes": [
+            { "type": "resources", "intel": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unguarded-shipment",
+      "category": "opportunity",
+      "title": "Unguarded Convoy",
+      "body": "A sympathiser reports an Imperial supply convoy moving through the area with minimal escort. The window is short.",
+      "choices": [
+        {
+          "id": "raid",
+          "label": "Raid the convoy",
+          "flavor": "Logistics cost, but the haul is worth it — if the escort is really as light as reported.",
+          "successChance": 0.65,
+          "outcomes": [
+            { "type": "material", "materialId": "explosives", "quantity": 2 },
+            { "type": "material", "materialId": "blaster-parts", "quantity": 2 },
+            { "type": "resources", "credits": -100 }
+          ],
+          "failureOutcomes": [
+            { "type": "resources", "credits": -150 },
+            { "type": "location-attribute", "key": "patrolFrequency", "delta": 10 }
+          ]
+        },
+        {
+          "id": "report",
+          "label": "Report the location to allies",
+          "flavor": "Build goodwill and local support instead.",
+          "outcomes": [
+            { "type": "resources", "intel": 2 },
+            { "type": "location-attribute", "key": "popularSupport", "delta": 5 }
+          ]
+        },
+        {
+          "id": "ignore",
+          "label": "Ignore it",
+          "flavor": "Not worth the exposure right now.",
+          "outcomes": [{ "type": "nothing" }]
+        }
+      ]
+    },
+    {
+      "id": "contact-goes-dark",
+      "category": "complication",
+      "title": "Contact Goes Dark",
+      "body": "One of your key contacts has stopped responding. The silence has lasted too long — something is wrong.",
+      "choices": [
+        {
+          "id": "investigate",
+          "label": "Send someone to investigate",
+          "flavor": "Costly, but you need to know what happened — and hope the contact wasn't turned.",
+          "successChance": 0.60,
+          "outcomes": [
+            { "type": "resources", "credits": -200, "intel": 3 }
+          ],
+          "failureOutcomes": [
+            { "type": "resources", "credits": -200 },
+            { "type": "location-attribute", "key": "customsScrutiny", "delta": 5 }
+          ]
+        },
+        {
+          "id": "wait",
+          "label": "Wait and hope",
+          "flavor": "The uncertainty spreads. Local morale suffers.",
+          "outcomes": [
+            { "type": "location-attribute", "key": "popularSupport", "delta": -5 }
+          ]
+        },
+        {
+          "id": "cut",
+          "label": "Cut contact entirely",
+          "flavor": "Safe — but the network is gone.",
+          "outcomes": [{ "type": "nothing" }]
+        }
+      ]
+    },
+    {
+      "id": "equipment-failure",
+      "category": "complication",
+      "title": "Equipment Malfunction",
+      "body": "Critical comm equipment has malfunctioned at the worst possible time. Operations are degraded until it's resolved.",
+      "choices": [
+        {
+          "id": "repair",
+          "label": "Emergency field repair",
+          "flavor": "Burn a unit to get back online fast.",
+          "outcomes": [
+            { "type": "material", "materialId": "comm-equipment", "quantity": -1 }
+          ]
+        },
+        {
+          "id": "improvise",
+          "label": "Improvise with what you have",
+          "flavor": "Information quality degrades across the network.",
+          "outcomes": [
+            { "type": "resources", "intel": -3 }
+          ]
+        },
+        {
+          "id": "resupply",
+          "label": "Request resupply",
+          "flavor": "Slower but you end up better equipped than before.",
+          "outcomes": [
+            { "type": "resources", "credits": -250 },
+            { "type": "material", "materialId": "comm-equipment", "quantity": 1 }
+          ]
+        }
+      ]
+    }
+  ]
+}

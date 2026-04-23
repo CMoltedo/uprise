@@ -106,3 +106,13 @@ export const getTravelBlockReason = (person: Personnel): string | null => {
 /** True if the person can be assigned to travel (idle only). */
 export const canPersonnelTravel = (person: Personnel): boolean =>
   getTravelBlockReason(person) === null;
+
+/** Returns a morale warning badge descriptor, or null if morale is acceptable. */
+export const getMoraleIndicator = (
+  person: Personnel,
+): { label: string; className: string } | null => {
+  const m = person.morale ?? 50;
+  if (m <= 15) return { label: "breaking", className: "morale-breaking" };
+  if (m <= 30) return { label: "shaken", className: "morale-shaken" };
+  return null;
+};

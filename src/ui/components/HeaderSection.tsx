@@ -20,6 +20,7 @@ type HeaderSectionProps = {
   speedLabel: string;
   onTogglePause: () => void;
   isPaused: boolean;
+  pauseLocked?: boolean;
   hourFill: number;
   hourOfDay: number;
   year: number;
@@ -56,6 +57,7 @@ export const HeaderSection = ({
   speedLabel,
   onTogglePause,
   isPaused,
+  pauseLocked,
   hourFill,
   hourOfDay,
   year,
@@ -195,11 +197,11 @@ export const HeaderSection = ({
           <div className="speed-indicator meta">Speed: {speedLabel}</div>
           <div key={dialFlashKey} className="time-dial-wrap">
             <div
-              className={`time-dial${isPaused ? " is-paused" : ""}`}
+              className={`time-dial${isPaused ? " is-paused" : ""}${pauseLocked ? " is-locked" : ""}`}
               style={{ ["--dial-fill" as string]: `${hourFill}%` }}
               role="button"
               tabIndex={0}
-              aria-label={isPaused ? "Resume time" : "Pause time"}
+              aria-label={pauseLocked ? "Paused — resolve event to continue" : isPaused ? "Resume time" : "Pause time"}
               onClick={onTogglePause}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
@@ -209,8 +211,11 @@ export const HeaderSection = ({
               }}
             >
               <div className="time-dial-center" />
-              <div className="time-dial-label">{isPaused ? "⏸" : `${hourOfDay}h`}</div>
+              <div className="time-dial-label">{pauseLocked ? "🔒" : isPaused ? "⏸" : `${hourOfDay}h`}</div>
             </div>
+            {pauseLocked && (
+              <div className="pause-locked-hint meta">Resolve event to continue</div>
+            )}
           </div>
         </div>
         <div className="actions">

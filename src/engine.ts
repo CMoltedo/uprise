@@ -21,10 +21,17 @@ import type {
   IntelSnapshot,
   IntelQuality,
   PlayerKnowledge,
+  EnemyActionEvent,
+  EnemyActionKind,
+  NarrativeEventDef,
+  NarrativePending,
+  NarrativeEventLog,
+  NarrativeOutcome,
 } from "./models.js";
 import { generatePersonnel } from "./generators.js";
 import balance from "./data/balance.json";
 import intelDefsData from "./data/intel_defs.json";
+import narrativeEventsData from "./data/narrativeEvents.json";
 
 interface IntelDefEntry {
   staleAfterHours: number;
@@ -122,6 +129,37 @@ function tryAddMutableTrait(
 const getPersonnelRoles = (personnel: Personnel[]) =>
   personnel.flatMap((person) => person.roles);
 
+/**
+ * Rolls for a post-mission role level-up for each assigned person.
+ * Chance diminishes as level approaches maxRoleLevel (harder to advance at high levels).
+ */
+const applyPostMissionLevelGain = (
+  personnel: Personnel[],
+  assignedPersonnelIds: string[],
+  maxRoleLevel: number | undefined,
+  baseChance: number,
+): { personnel: Personnel[]; roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> } => {
+  let next = personnel;
+  const roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> = [];
+  for (const personnelId of assignedPersonnelIds) {
+    const person = next.find((p) => p.id === personnelId);
+    if (!person || person.roles.length === 0) continue;
+    const roleId = person.roles[Math.floor(Math.random() * person.roles.length)] as PersonnelRole;
+    const currentLevel = person.roleLevels?.[roleId] ?? 1;
+    if (maxRoleLevel != null && currentLevel >= maxRoleLevel) continue;
+    // Diminishing returns: full chance at level 1, 10% of base chance near max
+    const diminish = Math.max(0.1, 1 - (currentLevel - 1) / (maxRoleLevel ?? 10));
+    const effectiveChance = baseChance * diminish;
+    if (Math.random() >= effectiveChance) continue;
+    const newLevel = currentLevel + 1;
+    next = next.map((p) =>
+      p.id !== personnelId ? p : { ...p, roleLevels: { ...p.roleLevels, [roleId]: newLevel } },
+    );
+    roleGained.push({ personnelId, roleId, newLevel });
+  }
+  return { personnel: next, roleGained };
+};
+
 export const getTraitSuccessModifier = (personnel: Personnel[]) => {
   const traitModifiers = balance.traitSuccessModifiers as
     | Record<string, number>
@@ -150,6 +188,36 @@ export const getMissionConsumeModifier = (personnel: Personnel[]) => {
   return getModifierSummary(getPersonnelRoles(personnel), consumeModifiers);
 };
 
+const getPersonnelMorale = (person: Personnel): number => {
+  if (person.morale != null) return person.morale;
+  const bal = balance as unknown as Record<string, number>;
+  const def = bal.moraleDefault ?? 50;
+  const traitBase =
+    (balance as unknown as { traitMoraleBase?: Record<string, number> }).traitMoraleBase ?? {};
+  const traits = getTraitsForPerson(person);
+  const offset = traits.reduce((sum, t) => sum + (traitBase[t] ?? 0), 0);
+  return Math.max(0, Math.min(100, def + offset));
+};
+
+const applyMoraleChange = (person: Personnel, delta: number): Personnel => {
+  const bal = balance as unknown as Record<string, number>;
+  const current = getPersonnelMorale(person);
+  const next = Math.max(bal.moraleMin ?? 0, Math.min(bal.moraleMax ?? 100, current + delta));
+  return { ...person, morale: next };
+};
+
+export const getMoraleSuccessModifier = (person: Personnel): number => {
+  const bal = balance as unknown as Record<string, number>;
+  const m = getPersonnelMorale(person);
+  const breaking = bal.moraleBreakingPointThreshold ?? 15;
+  const warn = bal.moraleWarnThreshold ?? 30;
+  const high = bal.moraleHighThreshold ?? 70;
+  if (m <= breaking) return bal.moraleSuccessModifierBreaking ?? -0.1;
+  if (m < warn) return bal.moraleSuccessModifierLow ?? -0.05;
+  if (m >= high) return bal.moraleSuccessModifierHigh ?? 0.03;
+  return 0;
+};
+
 export const getMissionSuccessChance = (
   plan: MissionPlan,
   personnel: Personnel[],
@@ -158,13 +226,17 @@ export const getMissionSuccessChance = (
   const traitModifier = getTraitSuccessModifier(personnel);
   const roleModifier = getRoleSuccessModifier(personnel);
   const totalModifier = traitModifier.total + roleModifier.total;
-  const chance = clampChance(baseChance + totalModifier);
+  const moraleModifier =
+    personnel.reduce((sum, p) => sum + getMoraleSuccessModifier(p), 0) /
+    Math.max(1, personnel.length);
+  const chance = clampChance(baseChance + totalModifier + moraleModifier);
   return {
     chance,
     baseChance,
     traitModifier,
     roleModifier,
     totalModifier,
+    moraleModifier,
   };
 };
 
@@ -250,6 +322,32 @@ export const getMissionOperationalRisk = (
   const mitigation = getAgentRiskMitigation(personnel, plan);
   const raw = base * locationFactor - mitigation;
   return Math.max(0, Math.min(1, raw));
+};
+
+export interface OperationalRiskBreakdown {
+  risk: number;
+  base: number;
+  locationFactor: number;
+  mitigation: number;
+}
+
+/** Like getMissionOperationalRisk but returns the breakdown components alongside the final value. */
+export const getMissionOperationalRiskBreakdown = (
+  state: GameState,
+  plan: MissionPlan,
+  locationId: string,
+  personnel: Personnel[],
+): OperationalRiskBreakdown => {
+  const base = getBaseRiskRating(plan);
+  const locationFactor = getLocationRiskFactor(state, locationId);
+  const mitigation = getAgentRiskMitigation(personnel, plan);
+  const raw = base * locationFactor - mitigation;
+  return {
+    risk: Math.max(0, Math.min(1, raw)),
+    base,
+    locationFactor,
+    mitigation,
+  };
 };
 
 const mergeResources = (
@@ -444,6 +542,13 @@ const hasMaterials = (
     }
   }
   return errors;
+};
+
+const hasCredits = (state: GameState, plan: MissionPlan): string[] => {
+  if (!plan.creditsCost || plan.creditsCost <= 0) return [];
+  if (state.runtime.resources.credits < plan.creditsCost)
+    return [`Need ${plan.creditsCost} credits (have ${state.runtime.resources.credits})`];
+  return [];
 };
 
 const consumeMaterials = (
@@ -690,7 +795,7 @@ const isTruthKeyNumeric = (key: string): boolean =>
   key === "popularSupport" ||
   key === "healthcareFacilities";
 
-const INTEL_KEY_LABEL: Record<string, string> = {
+export const INTEL_KEY_LABEL: Record<string, string> = {
   customsScrutiny: "Customs",
   patrolFrequency: "Patrols",
   garrisonStrength: "Garrison",
@@ -704,7 +809,7 @@ const INTEL_KEY_LABEL: Record<string, string> = {
   healthcareFacilities: "Healthcare",
 };
 
-const INTEL_DISPLAY_ORDER = [
+export const INTEL_DISPLAY_ORDER = [
   "customsScrutiny",
   "patrolFrequency",
   "garrisonStrength",
@@ -935,6 +1040,7 @@ export const validateAssignment = (
     }
   }
   errors.push(...hasMaterials(state, plan.requiredMaterials));
+  errors.push(...hasCredits(state, plan));
   return errors;
 };
 
@@ -1027,6 +1133,10 @@ export const assignPersonnelToMission = (
     ...state,
     runtime: {
       ...state.runtime,
+      resources: {
+        ...state.runtime.resources,
+        credits: state.runtime.resources.credits - (plan.creditsCost ?? 0),
+      },
       personnel: state.runtime.personnel.map((person) =>
         personnelIds.includes(person.id)
           ? {
@@ -1046,6 +1156,32 @@ export const assignPersonnelToMission = (
         : state.runtime.missionOffers,
     },
   };
+};
+
+/** Compute travel duration in hours based on the geographic relationship between locations. */
+export const getTravelDuration = (
+  fromLocationId: string,
+  toLocationId: string,
+  state: GameState,
+): number => {
+  const bal = balance as unknown as Record<string, number>;
+  const samePlanet = bal.travelSamePlanetHours ?? 12;
+  const sameSector = bal.travelSameSectorHours ?? 48;
+  const interSector = bal.travelInterSectorHours ?? 120;
+
+  if (fromLocationId === toLocationId) return 1;
+
+  const fromLoc = state.data.locations.find((l) => l.id === fromLocationId);
+  const toLoc = state.data.locations.find((l) => l.id === toLocationId);
+  if (!fromLoc || !toLoc) return sameSector;
+
+  if (fromLoc.planetId === toLoc.planetId) return samePlanet;
+
+  const fromPlanet = state.data.planets.find((p) => p.id === fromLoc.planetId);
+  const toPlanet = state.data.planets.find((p) => p.id === toLoc.planetId);
+  if (fromPlanet && toPlanet && fromPlanet.sectorId === toPlanet.sectorId) return sameSector;
+
+  return interSector;
 };
 
 export const assignTravel = (
@@ -1107,7 +1243,7 @@ export const assignTravel = (
 type AdverseOutcome = "wounded" | "captured" | "mia" | "killed";
 
 /** Returns the adverse outcome for one agent based on effective risk and mission success. */
-function rollAdverseOutcome(
+export function rollAdverseOutcome(
   effectiveRisk: number,
   missionSuccess: boolean,
   rng: () => number = Math.random,
@@ -1186,7 +1322,6 @@ const resolveMission = (
   }
 
   if (plan.type === "rescue") {
-    const success = true;
     const nowHours = state.runtime.nowHours;
     const targetIds = mission.targetPersonnelIds?.length
       ? mission.targetPersonnelIds
@@ -1196,14 +1331,130 @@ const resolveMission = (
               p.status === "captured" && p.capturedLocationId === mission.locationId,
           )
           .map((p) => p.id);
-    const updatedPersonnel = state.runtime.personnel.map((person) => {
-      if (!targetIds.includes(person.id)) return person;
-      const { capturedAtHours, capturedLocationId, ...rest } = person;
-      return { ...rest, status: "idle" as const };
+    const assignedPersonnel = state.runtime.personnel.filter((p) =>
+      mission.assignedPersonnelIds.includes(p.id),
+    );
+    const { chance: rawSuccessChance } = getMissionSuccessChance(plan, assignedPersonnel);
+    const counterOpPenalty = mission.enemyCounterOp
+      ? ((balance as unknown as Record<string, number>).enemyCounterOpPenalty ?? 0.2)
+      : 0;
+    const successChance = Math.max(0, rawSuccessChance - counterOpPenalty);
+    const success = Math.random() <= successChance;
+
+    const rewardBundle = success ? plan.rewards : plan.penalties;
+    const rewardDirection: 1 | -1 = success ? 1 : -1;
+    const rewardMultiplier = success ? getMissionRewardModifier(assignedPersonnel).total : 0;
+    const rewardResult = applyRewardBundle(state, rewardBundle, rewardMultiplier, rewardDirection);
+
+    const restingMinHours = (balance as { restingMinHours?: number }).restingMinHours ?? 2;
+    const successFactor = (balance as { restingAfterSuccessFactor?: number }).restingAfterSuccessFactor ?? 0.25;
+    const failureFactor = (balance as { restingAfterFailureFactor?: number }).restingAfterFailureFactor ?? 0.75;
+
+    // Apply adverse outcomes to rescuers
+    let updatedPersonnel = state.runtime.personnel.map((person) => {
+      if (!mission.assignedPersonnelIds.includes(person.id)) return person;
+      const effectiveRisk = getMissionOperationalRisk(state, plan, mission.locationId, [person]);
+      const outcome = rollAdverseOutcome(effectiveRisk, success);
+      const restHours = outcome === "safe"
+        ? Math.max(restingMinHours, plan.durationHours * (success ? successFactor : failureFactor))
+        : 0;
+      if (outcome === "safe") return { ...person, status: "resting" as const, restingUntilHours: nowHours + restHours };
+      if (outcome === "wounded") return { ...person, status: "wounded" as const, woundedAtHours: nowHours };
+      if (outcome === "captured") return { ...person, status: "captured" as const, capturedAtHours: nowHours, capturedLocationId: mission.locationId };
+      if (outcome === "mia") return { ...person, status: "mia" as const, miaAtHours: nowHours, miaLocationId: mission.locationId };
+      return { ...person, status: "killed" as const, killedAtHours: nowHours, killedMissionId: mission.id };
     });
+
+    // Apply outcomes to captured targets
+    const rescuedPersonnelIds: string[] = [];
+    const targetAdverseOutcomes: NonNullable<MissionEvent["targetAdverseOutcomes"]> = [];
+
+    if (success) {
+      for (const personnelId of targetIds) {
+        const person = updatedPersonnel.find((p) => p.id === personnelId);
+        if (!person || person.status !== "captured") continue;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { capturedAtHours: _ca, capturedLocationId: _cl, ...rest } = person;
+        updatedPersonnel = updatedPersonnel.map((p) =>
+          p.id !== personnelId ? p : { ...rest, status: "idle" as const },
+        );
+        rescuedPersonnelIds.push(personnelId);
+      }
+    } else {
+      // Determine what happens to targets when the rescue fails
+      const locationRisk = getMissionOperationalRisk(state, plan, mission.locationId, []);
+      const availableLocations = state.data.locations.filter(
+        (loc) =>
+          !loc.disabled &&
+          loc.id !== mission.locationId &&
+          !state.runtime.personnel.some(
+            (p) => p.locationId === loc.id && !["captured", "mia", "killed"].includes(p.status),
+          ),
+      );
+      for (const personnelId of targetIds) {
+        const person = updatedPersonnel.find((p) => p.id === personnelId);
+        if (!person || person.status !== "captured") continue;
+        const executeThreshold = locationRisk >= 0.7 ? 0.15 : locationRisk >= 0.4 ? 0.05 : -1;
+        if (executeThreshold >= 0 && Math.random() < executeThreshold) {
+          updatedPersonnel = updatedPersonnel.map((p) =>
+            p.id !== personnelId
+              ? p
+              : { ...p, status: "killed" as const, killedAtHours: nowHours, killedMissionId: mission.id, capturedAtHours: undefined, capturedLocationId: undefined },
+          );
+          targetAdverseOutcomes.push({ personnelId, outcome: "executed" });
+        } else if (locationRisk >= 0.4 && availableLocations.length > 0) {
+          const newLoc = availableLocations[Math.floor(Math.random() * availableLocations.length)];
+          updatedPersonnel = updatedPersonnel.map((p) =>
+            p.id !== personnelId ? p : { ...p, capturedLocationId: newLoc.id },
+          );
+          targetAdverseOutcomes.push({ personnelId, outcome: "moved", newLocationId: newLoc.id });
+        }
+        // locationRisk < 0.4: target stays put, no adverse outcome recorded
+      }
+    }
+
+    // Role and trait gains for rescuers on success
+    let personnelAfterRoleGains = updatedPersonnel;
+    let roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> = [];
+    if (success) {
+      const maxRoleLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel;
+      const postLevelChance = (balance as { postMissionLevelChance?: number }).postMissionLevelChance ?? 0.03;
+      const result = applyPostMissionLevelGain(personnelAfterRoleGains, mission.assignedPersonnelIds, maxRoleLevel, postLevelChance);
+      personnelAfterRoleGains = result.personnel;
+      roleGained = result.roleGained;
+    }
+
+    const traitGained: Array<{ personnelId: string; traitId: string }> = [];
+    const successCandidates = ["battle-tested", "confident", "lucky"];
+    const failureCandidates = ["shaken", "overcautious", "reckless"].filter((t) => MUTABLE_POOL.includes(t));
+    const woundedCandidates = ["scarred", "trauma"].filter((t) => MUTABLE_POOL.includes(t));
+    let personnelAfterTraitGains = personnelAfterRoleGains;
+    for (const personnelId of mission.assignedPersonnelIds) {
+      personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+        p.id !== personnelId
+          ? p
+          : tryAddMutableTrait(p, success ? successCandidates : failureCandidates),
+      );
+      const person = personnelAfterTraitGains.find((p) => p.id === personnelId);
+      if (person?.status === "wounded") {
+        personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+          p.id !== personnelId ? p : tryAddMutableTrait(p, woundedCandidates),
+        );
+      }
+    }
+    for (const personnelId of mission.assignedPersonnelIds) {
+      const before = personnelAfterRoleGains.find((p) => p.id === personnelId);
+      const after = personnelAfterTraitGains.find((p) => p.id === personnelId);
+      if (!before || !after) continue;
+      const beforeSet = new Set(before.mutableTraits ?? []);
+      for (const t of after.mutableTraits ?? []) {
+        if (!beforeSet.has(t)) traitGained.push({ personnelId, traitId: t });
+      }
+    }
+
     const updatedMission: MissionInstance = {
       ...mission,
-      status: "resolved",
+      status: success ? "resolved" : "failed",
       remainingHours: 0,
     };
     const event: MissionEvent = {
@@ -1211,18 +1462,24 @@ const resolveMission = (
       kind: "mission",
       missionId: mission.id,
       planId: mission.planId,
-      status: "resolved",
+      status: updatedMission.status,
       resolvedAtHours: nowHours,
       success,
       personnelIds: [...mission.assignedPersonnelIds],
-      rewardsApplied: {},
+      rewardsApplied: rewardResult.applied,
       locationId: mission.locationId,
+      ...(roleGained.length > 0 && { roleGained }),
+      ...(traitGained.length > 0 && { traitGained }),
+      ...(rescuedPersonnelIds.length > 0 && { rescuedPersonnelIds }),
+      ...(targetAdverseOutcomes.length > 0 && { targetAdverseOutcomes }),
     };
     return {
       ...state,
       runtime: {
         ...state.runtime,
-        personnel: updatedPersonnel,
+        resources: rewardResult.resources,
+        materials: rewardResult.materials,
+        personnel: personnelAfterTraitGains,
         missions: state.runtime.missions.map((item) =>
           item.id === mission.id ? updatedMission : item,
         ),
@@ -1243,54 +1500,120 @@ const resolveMission = (
     const assignedPersonnel = state.runtime.personnel.filter((p) =>
       mission.assignedPersonnelIds.includes(p.id),
     );
-    const { chance: successChance } = getMissionSuccessChance(plan, assignedPersonnel);
+    const { chance: rawSuccessChance } = getMissionSuccessChance(plan, assignedPersonnel);
+    const counterOpPenalty = mission.enemyCounterOp
+      ? ((balance as unknown as Record<string, number>).enemyCounterOpPenalty ?? 0.2)
+      : 0;
+    const successChance = Math.max(0, rawSuccessChance - counterOpPenalty);
     const roll = Math.random();
     const success = roll <= successChance;
+
+    const rewardBundle = success ? plan.rewards : plan.penalties;
+    const rewardDirection: 1 | -1 = success ? 1 : -1;
+    const rewardMultiplier = success ? getMissionRewardModifier(assignedPersonnel).total : 0;
+    const rewardResult = applyRewardBundle(state, rewardBundle, rewardMultiplier, rewardDirection);
+
+    const restingMinHours = (balance as { restingMinHours?: number }).restingMinHours ?? 2;
+    const successFactor = (balance as { restingAfterSuccessFactor?: number }).restingAfterSuccessFactor ?? 0.25;
+    const failureFactor = (balance as { restingAfterFailureFactor?: number }).restingAfterFailureFactor ?? 0.75;
+
     const outcomeRoll = Math.random();
-    let outcome: "found" | "intel_captured" | "failed" = "failed";
+    let searchOutcome: "found" | "intel_captured" | "failed" = "failed";
     if (success) {
-      if (outcomeRoll < 0.6) outcome = "found";
-      else if (outcomeRoll < 0.85) outcome = "intel_captured";
+      if (outcomeRoll < 0.6) searchOutcome = "found";
+      else if (outcomeRoll < 0.85) searchOutcome = "intel_captured";
     }
+
+    // Resolve MIA target outcomes
+    const rescuedPersonnelIds: string[] = [];
     let updatedPersonnel = state.runtime.personnel;
+    const locationRisk = getMissionOperationalRisk(state, plan, mission.locationId, []);
+
     for (const personnelId of targetIds) {
       const person = updatedPersonnel.find((p) => p.id === personnelId);
       if (!person || person.status !== "mia") continue;
-      if (outcome === "found") {
-        const wounded = Math.random() < 0.2;
+      if (searchOutcome === "found") {
+        // High-risk location: small chance agent was found too late
+        if (locationRisk >= 0.7 && Math.random() < 0.05) {
+          updatedPersonnel = updatedPersonnel.map((p) =>
+            p.id !== personnelId
+              ? p
+              : { ...p, status: "killed" as const, killedAtHours: nowHours, killedMissionId: mission.id, miaAtHours: undefined, miaLocationId: undefined },
+          );
+        } else {
+          const wounded = Math.random() < 0.2;
+          updatedPersonnel = updatedPersonnel.map((p) =>
+            p.id !== personnelId
+              ? p
+              : wounded
+                ? { ...p, status: "wounded" as const, woundedAtHours: nowHours, miaAtHours: undefined, miaLocationId: undefined }
+                : { ...p, status: "idle" as const, miaAtHours: undefined, miaLocationId: undefined },
+          );
+          rescuedPersonnelIds.push(personnelId);
+        }
+      } else if (searchOutcome === "intel_captured") {
         updatedPersonnel = updatedPersonnel.map((p) =>
           p.id !== personnelId
             ? p
-            : wounded
-              ? {
-                  ...p,
-                  status: "wounded" as const,
-                  woundedAtHours: nowHours,
-                  miaAtHours: undefined,
-                  miaLocationId: undefined,
-                }
-              : {
-                  ...p,
-                  status: "idle" as const,
-                  miaAtHours: undefined,
-                  miaLocationId: undefined,
-                },
-        );
-      } else if (outcome === "intel_captured") {
-        updatedPersonnel = updatedPersonnel.map((p) =>
-          p.id !== personnelId
-            ? p
-            : {
-                ...p,
-                status: "captured" as const,
-                capturedAtHours: nowHours,
-                capturedLocationId: mission.locationId,
-                miaAtHours: undefined,
-                miaLocationId: undefined,
-              },
+            : { ...p, status: "captured" as const, capturedAtHours: nowHours, capturedLocationId: mission.locationId, miaAtHours: undefined, miaLocationId: undefined },
         );
       }
     }
+
+    // Apply adverse outcomes to searchers
+    updatedPersonnel = updatedPersonnel.map((person) => {
+      if (!mission.assignedPersonnelIds.includes(person.id)) return person;
+      const effectiveRisk = getMissionOperationalRisk(state, plan, mission.locationId, [person]);
+      const outcome = rollAdverseOutcome(effectiveRisk, success);
+      const restHours = outcome === "safe"
+        ? Math.max(restingMinHours, plan.durationHours * (success ? successFactor : failureFactor))
+        : 0;
+      if (outcome === "safe") return { ...person, status: "resting" as const, restingUntilHours: nowHours + restHours };
+      if (outcome === "wounded") return { ...person, status: "wounded" as const, woundedAtHours: nowHours };
+      if (outcome === "captured") return { ...person, status: "captured" as const, capturedAtHours: nowHours, capturedLocationId: mission.locationId };
+      if (outcome === "mia") return { ...person, status: "mia" as const, miaAtHours: nowHours, miaLocationId: mission.locationId };
+      return { ...person, status: "killed" as const, killedAtHours: nowHours, killedMissionId: mission.id };
+    });
+
+    // Role and trait gains for searchers on success
+    let personnelAfterRoleGains = updatedPersonnel;
+    let roleGained: Array<{ personnelId: string; roleId: string; newLevel?: number }> = [];
+    if (success) {
+      const maxRoleLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel;
+      const postLevelChance = (balance as { postMissionLevelChance?: number }).postMissionLevelChance ?? 0.03;
+      const result = applyPostMissionLevelGain(personnelAfterRoleGains, mission.assignedPersonnelIds, maxRoleLevel, postLevelChance);
+      personnelAfterRoleGains = result.personnel;
+      roleGained = result.roleGained;
+    }
+
+    const traitGained: Array<{ personnelId: string; traitId: string }> = [];
+    const successCandidates = ["battle-tested", "confident", "lucky"];
+    const failureCandidates = ["shaken", "overcautious", "reckless"].filter((t) => MUTABLE_POOL.includes(t));
+    const woundedCandidates = ["scarred", "trauma"].filter((t) => MUTABLE_POOL.includes(t));
+    let personnelAfterTraitGains = personnelAfterRoleGains;
+    for (const personnelId of mission.assignedPersonnelIds) {
+      personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+        p.id !== personnelId
+          ? p
+          : tryAddMutableTrait(p, success ? successCandidates : failureCandidates),
+      );
+      const person = personnelAfterTraitGains.find((p) => p.id === personnelId);
+      if (person?.status === "wounded") {
+        personnelAfterTraitGains = personnelAfterTraitGains.map((p) =>
+          p.id !== personnelId ? p : tryAddMutableTrait(p, woundedCandidates),
+        );
+      }
+    }
+    for (const personnelId of mission.assignedPersonnelIds) {
+      const before = personnelAfterRoleGains.find((p) => p.id === personnelId);
+      const after = personnelAfterTraitGains.find((p) => p.id === personnelId);
+      if (!before || !after) continue;
+      const beforeSet = new Set(before.mutableTraits ?? []);
+      for (const t of after.mutableTraits ?? []) {
+        if (!beforeSet.has(t)) traitGained.push({ personnelId, traitId: t });
+      }
+    }
+
     const updatedMission: MissionInstance = {
       ...mission,
       status: success ? "resolved" : "failed",
@@ -1305,14 +1628,19 @@ const resolveMission = (
       resolvedAtHours: nowHours,
       success,
       personnelIds: [...mission.assignedPersonnelIds],
-      rewardsApplied: {},
+      rewardsApplied: rewardResult.applied,
       locationId: mission.locationId,
+      ...(roleGained.length > 0 && { roleGained }),
+      ...(traitGained.length > 0 && { traitGained }),
+      ...(rescuedPersonnelIds.length > 0 && { rescuedPersonnelIds }),
     };
     return {
       ...state,
       runtime: {
         ...state.runtime,
-        personnel: updatedPersonnel,
+        resources: rewardResult.resources,
+        materials: rewardResult.materials,
+        personnel: personnelAfterTraitGains,
         missions: state.runtime.missions.map((item) =>
           item.id === mission.id ? updatedMission : item,
         ),
@@ -1324,7 +1652,11 @@ const resolveMission = (
   const assignedPersonnel = state.runtime.personnel.filter((person) =>
     mission.assignedPersonnelIds.includes(person.id),
   );
-  const { chance: successChance } = getMissionSuccessChance(plan, assignedPersonnel);
+  const { chance: rawSuccessChance } = getMissionSuccessChance(plan, assignedPersonnel);
+  const counterOpPenalty = mission.enemyCounterOp
+    ? ((balance as unknown as Record<string, number>).enemyCounterOpPenalty ?? 0.2)
+    : 0;
+  const successChance = Math.max(0, rawSuccessChance - counterOpPenalty);
   const rewardModifier = getMissionRewardModifier(assignedPersonnel);
   const roll = Math.random();
   const success = roll <= successChance;
@@ -1402,6 +1734,17 @@ const resolveMission = (
     remainingHours: 0,
   };
 
+  // Apply morale changes for mission outcome
+  const moraleBal = balance as unknown as Record<string, number>;
+  const moraleDelta = success
+    ? (moraleBal.moraleMissionSuccess ?? 5)
+    : (moraleBal.moraleMissionFailure ?? -10);
+  const personnelWithMorale = updatedPersonnel.map((person) =>
+    mission.assignedPersonnelIds.includes(person.id)
+      ? applyMoraleChange(person, moraleDelta)
+      : person,
+  );
+
   let intelReport: { summary: string; keys: string[] } | undefined;
   let appliedLocationAttributes: Partial<Record<keyof Location["attributes"], number>> | undefined;
   let locationAttributeChanges: Partial<Record<keyof Location["attributes"], { before: number; after: number }>> | undefined;
@@ -1411,7 +1754,7 @@ const resolveMission = (
       ...state.runtime,
       resources: rewardResult.resources,
       materials: rewardResult.materials,
-      personnel: updatedPersonnel,
+      personnel: personnelWithMorale,
       missions: state.runtime.missions.map((item) =>
         item.id === mission.id ? updatedMission : item,
       ),
@@ -1472,22 +1815,9 @@ const resolveMission = (
   if (success) {
     const maxRoleLevel = (balance as { maxRoleLevel?: number }).maxRoleLevel;
     const postLevelChance = (balance as { postMissionLevelChance?: number }).postMissionLevelChance ?? 0.03;
-
-    for (const personnelId of mission.assignedPersonnelIds) {
-      const person = personnelAfterRoleGains.find((p) => p.id === personnelId);
-      if (!person || person.roles.length === 0) continue;
-      if (Math.random() >= postLevelChance) continue;
-      const roleId = person.roles[Math.floor(Math.random() * person.roles.length)] as PersonnelRole;
-      const currentLevel = person.roleLevels?.[roleId] ?? 1;
-      if (maxRoleLevel != null && currentLevel >= maxRoleLevel) continue;
-      const newLevel = currentLevel + 1;
-      personnelAfterRoleGains = personnelAfterRoleGains.map((p) =>
-        p.id !== personnelId
-          ? p
-          : { ...p, roleLevels: { ...p.roleLevels, [roleId]: newLevel } },
-      );
-      roleGained.push({ personnelId, roleId, newLevel });
-    }
+    const levelResult = applyPostMissionLevelGain(personnelAfterRoleGains, mission.assignedPersonnelIds, maxRoleLevel, postLevelChance);
+    personnelAfterRoleGains = levelResult.personnel;
+    roleGained.push(...levelResult.roleGained);
 
     const postChance = (balance as { postMissionRoleChance?: number }).postMissionRoleChance ?? 0.02;
     for (const personnelId of mission.assignedPersonnelIds) {
@@ -1850,6 +2180,17 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
       const remaining = assignment.remainingHours - hours;
       if (remaining <= 0) {
         const originalTravelHours = assignment.remainingHours + hours;
+        const bal = balance as unknown as Record<string, number>;
+        const hazardBase = bal.travelHazardBaseChance ?? 0.05;
+        const destTruth = getLocationTruth(nextState, assignment.toLocationId);
+        const scrutiny = destTruth.customsScrutiny ?? nextState.data.locations.find((l) => l.id === assignment.toLocationId)?.attributes.customsScrutiny ?? 0;
+        const patrols = destTruth.patrolFrequency ?? nextState.data.locations.find((l) => l.id === assignment.toLocationId)?.attributes.patrolFrequency ?? 0;
+        const hazardChance = hazardBase * (scrutiny + patrols) / 100;
+        const hazardRoll = Math.random();
+        let arrivalPersonnelStatus: "idle" | "wounded" | "captured" = "idle";
+        if (hazardRoll < hazardChance) {
+          arrivalPersonnelStatus = hazardRoll < hazardChance * 0.4 ? "captured" : "wounded";
+        }
         const arrivalEvent: TravelEvent = {
           id: `event-${Date.now()}`,
           kind: "travel",
@@ -1859,20 +2200,23 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
           status: "arrived",
           atHours: nextState.runtime.nowHours,
           travelHours: originalTravelHours,
+          ...(arrivalPersonnelStatus !== "idle" && { hazard: arrivalPersonnelStatus }),
         };
+        const arrivalPersonnel = nextState.runtime.personnel.map((person) => {
+          if (person.id !== assignment.personnelId) return person;
+          if (arrivalPersonnelStatus === "wounded") {
+            return { ...person, locationId: assignment.toLocationId, status: "wounded" as const, woundedAtHours: nextState.runtime.nowHours };
+          }
+          if (arrivalPersonnelStatus === "captured") {
+            return { ...person, locationId: assignment.toLocationId, status: "captured" as const, capturedAtHours: nextState.runtime.nowHours, capturedLocationId: assignment.toLocationId };
+          }
+          return { ...person, locationId: assignment.toLocationId, status: "idle" as const };
+        });
         nextState = {
           ...nextState,
           runtime: {
             ...nextState.runtime,
-            personnel: nextState.runtime.personnel.map((person) =>
-              person.id === assignment.personnelId
-                ? {
-                    ...person,
-                    locationId: assignment.toLocationId,
-                    status: "idle",
-                  }
-                : person,
-            ),
+            personnel: arrivalPersonnel,
             travel: nextState.runtime.travel.filter(
               (item) => item.id !== assignment.id,
             ),
@@ -1902,7 +2246,9 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     const woundedAt = person.woundedAtHours ?? nowHours;
     if (nowHours - woundedAt >= passiveHealHours) {
       const { woundedAtHours: _, ...rest } = person;
-      return { ...rest, status: "idle" as const };
+      const healed = { ...rest, status: "idle" as const };
+      const bal2 = balance as unknown as Record<string, number>;
+      return applyMoraleChange(healed, bal2.moraleInjuryPenalty ?? -8);
     }
     return { ...person, woundedAtHours: woundedAt };
   });
@@ -1952,11 +2298,9 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     const chance = 1 - Math.pow(1 - chancePer24h, periods24h);
     if (Math.random() <= chance) {
       const { capturedAtHours, capturedLocationId, ...rest } = person;
-      return {
-        ...rest,
-        status: "idle" as const,
-        locationId: capturedLocationId ?? rest.locationId,
-      };
+      const freed = { ...rest, status: "idle" as const, locationId: capturedLocationId ?? rest.locationId };
+      const bal2 = balance as unknown as Record<string, number>;
+      return applyMoraleChange(freed, bal2.moraleCapturePenalty ?? -15);
     }
     return person;
   });
@@ -1973,11 +2317,9 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     if (person.status !== "mia") return person;
     if (Math.random() <= miaChance) {
       const { miaAtHours, miaLocationId, ...rest } = person;
-      return {
-        ...rest,
-        status: "idle" as const,
-        locationId: miaLocationId ?? rest.locationId,
-      };
+      const returned = { ...rest, status: "idle" as const, locationId: miaLocationId ?? rest.locationId };
+      const bal2 = balance as unknown as Record<string, number>;
+      return applyMoraleChange(returned, bal2.moraleMiaPenalty ?? -5);
     }
     return person;
   });
@@ -1988,9 +2330,498 @@ export const advanceTime = (state: GameState, hours: number): GameState => {
     };
   }
 
-  return updateMissionOffers(nextState);
+  nextState = tickMorale(nextState);
+  nextState = tickNarrativeEvents(nextState);
+  nextState = tickEnemyActivity(nextState);
+  return checkGamePhase(updateMissionOffers(nextState));
 };
 
 export const refreshMissionOffers = (state: GameState): GameState =>
   updateMissionOffers(state);
+
+// ─── Enemy Activity ──────────────────────────────────────────────────────────
+
+const setLocationTruthRuntime = (
+  state: GameState,
+  locationId: string,
+  truth: LocationTruth,
+): GameState => ({
+  ...state,
+  runtime: {
+    ...state.runtime,
+    locationTruth: { ...(state.runtime.locationTruth ?? {}), [locationId]: truth },
+  },
+});
+
+type EnemyActionResult = {
+  state: GameState;
+  event: EnemyActionEvent | null;
+};
+
+const pickEnemyAction = (
+  state: GameState,
+  locationId: string,
+): EnemyActionKind => {
+  const hasIdleAgent = state.runtime.personnel.some(
+    (p) => p.locationId === locationId && p.status === "idle",
+  );
+  const hasActiveMission = state.runtime.missions.some(
+    (m) => m.locationId === locationId && m.status === "active",
+  );
+
+  // Build weighted pool
+  const pool: EnemyActionKind[] = [];
+  pool.push("patrol-increase", "patrol-increase", "patrol-increase");
+  pool.push("propaganda", "propaganda", "propaganda");
+  if (hasIdleAgent) pool.push("arrest", "arrest");
+  else pool.push("propaganda", "propaganda"); // redistribute
+  if (hasActiveMission) pool.push("counter-op", "counter-op");
+  else pool.push("patrol-increase", "patrol-increase"); // redistribute
+
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
+const applyEnemyAction = (
+  state: GameState,
+  location: Location,
+  action: EnemyActionKind,
+  now: number,
+  patrolInc: number,
+  supportDec: number,
+): EnemyActionResult => {
+  const eventId = `enemy-${location.id}-${now}`;
+
+  if (action === "patrol-increase") {
+    const updatedLocations = state.data.locations.map((l) =>
+      l.id === location.id
+        ? {
+            ...l,
+            attributes: {
+              ...l.attributes,
+              garrisonStrength: Math.min(100, l.attributes.garrisonStrength + patrolInc),
+              patrolFrequency: Math.min(100, l.attributes.patrolFrequency + patrolInc),
+            },
+          }
+        : l,
+    );
+    const event: EnemyActionEvent = {
+      id: eventId,
+      kind: "enemy-action",
+      locationId: location.id,
+      action: "patrol-increase",
+      atHours: now,
+    };
+    return {
+      state: { ...state, data: { ...state.data, locations: updatedLocations } },
+      event,
+    };
+  }
+
+  if (action === "propaganda") {
+    const updatedLocations = state.data.locations.map((l) =>
+      l.id === location.id
+        ? {
+            ...l,
+            attributes: {
+              ...l.attributes,
+              popularSupport: Math.max(0, l.attributes.popularSupport - supportDec),
+            },
+          }
+        : l,
+    );
+    const event: EnemyActionEvent = {
+      id: eventId,
+      kind: "enemy-action",
+      locationId: location.id,
+      action: "propaganda",
+      atHours: now,
+    };
+    return {
+      state: { ...state, data: { ...state.data, locations: updatedLocations } },
+      event,
+    };
+  }
+
+  if (action === "arrest") {
+    const idleAgents = state.runtime.personnel.filter(
+      (p) => p.locationId === location.id && p.status === "idle",
+    );
+    if (idleAgents.length === 0) {
+      // Fallback to patrol-increase
+      return applyEnemyAction(state, location, "patrol-increase", now, patrolInc, supportDec);
+    }
+    const target = idleAgents[Math.floor(Math.random() * idleAgents.length)];
+    const updatedPersonnel = state.runtime.personnel.map((p) =>
+      p.id === target.id
+        ? {
+            ...p,
+            status: "captured" as PersonnelStatus,
+            capturedAtHours: now,
+            capturedLocationId: location.id,
+          }
+        : p,
+    );
+    const event: EnemyActionEvent = {
+      id: eventId,
+      kind: "enemy-action",
+      locationId: location.id,
+      action: "arrest",
+      atHours: now,
+      personnelId: target.id,
+    };
+    return {
+      state: {
+        ...state,
+        runtime: { ...state.runtime, personnel: updatedPersonnel },
+      },
+      event,
+    };
+  }
+
+  // counter-op
+  const activeMissions = state.runtime.missions.filter(
+    (m) => m.locationId === location.id && m.status === "active",
+  );
+  if (activeMissions.length === 0) {
+    return applyEnemyAction(state, location, "propaganda", now, patrolInc, supportDec);
+  }
+  const target = activeMissions[Math.floor(Math.random() * activeMissions.length)];
+  const updatedMissions = state.runtime.missions.map((m) =>
+    m.id === target.id ? { ...m, enemyCounterOp: true } : m,
+  );
+  const event: EnemyActionEvent = {
+    id: eventId,
+    kind: "enemy-action",
+    locationId: location.id,
+    action: "counter-op",
+    atHours: now,
+    missionId: target.id,
+  };
+  return {
+    state: {
+      ...state,
+      runtime: { ...state.runtime, missions: updatedMissions },
+    },
+    event,
+  };
+};
+
+const tickMorale = (state: GameState): GameState => {
+  const bal = balance as unknown as Record<string, number>;
+  const interval = bal.moralePassiveTickIntervalHours ?? 24;
+  const now = state.runtime.nowHours;
+  const thisCheck = Math.floor(now / interval) * interval;
+  const prevCheck = Math.floor((now - interval) / interval) * interval;
+  if (thisCheck <= prevCheck) return state;
+
+  const neutral = bal.moraleDefault ?? 50;
+  const recovery = bal.moralePassiveRecoveryPerTick ?? 1;
+  const breakingThreshold = bal.moraleBreakingPointThreshold ?? 15;
+  const miaChance = bal.moraleBreakingPointMiaChance ?? 0.05;
+
+  const personnel = state.runtime.personnel.map((person) => {
+    if (person.status === "killed") return person;
+    const current = getPersonnelMorale(person);
+    const delta = current < neutral ? recovery : current > neutral ? -recovery : 0;
+    let updated = applyMoraleChange(person, delta);
+    // Breaking point: spontaneous MIA for idle/resting agents
+    if (
+      (updated.morale ?? neutral) <= breakingThreshold &&
+      (person.status === "idle" || person.status === "resting") &&
+      Math.random() < miaChance
+    ) {
+      updated = {
+        ...updated,
+        status: "mia" as const,
+        miaAtHours: now,
+        miaLocationId: person.locationId,
+      };
+    }
+    return updated;
+  });
+
+  if (personnel.every((p, i) => p === state.runtime.personnel[i])) return state;
+  return { ...state, runtime: { ...state.runtime, personnel } };
+};
+
+const tickNarrativeEvents = (state: GameState): GameState => {
+  const bal = balance as unknown as Record<string, number>;
+  const checkInterval = bal.narrativeEventCheckIntervalHours ?? 24;
+  const chance = bal.narrativeEventChance ?? 0.35;
+  const windowHours = bal.narrativeEventWindowHours ?? 48;
+  const maxPending = bal.narrativeEventMaxPending ?? 1;
+  const now = state.runtime.nowHours;
+  const pending = state.runtime.narrativePending ?? [];
+
+  // Expire old pending events
+  const active = pending.filter((p) => p.expiresAtHours > now);
+
+  if (active.length >= maxPending) {
+    return { ...state, runtime: { ...state.runtime, narrativePending: active } };
+  }
+
+  // Only fire once per interval
+  const thisCheck = Math.floor(now / checkInterval) * checkInterval;
+  const prevCheck = Math.floor((now - checkInterval) / checkInterval) * checkInterval;
+  if (thisCheck <= prevCheck) {
+    return active.length !== pending.length
+      ? { ...state, runtime: { ...state.runtime, narrativePending: active } }
+      : state;
+  }
+
+  if (Math.random() > chance) {
+    return active.length !== pending.length
+      ? { ...state, runtime: { ...state.runtime, narrativePending: active } }
+      : state;
+  }
+
+  const defs = (narrativeEventsData as { events: NarrativeEventDef[] }).events;
+  if (defs.length === 0) return state;
+  const def = defs[Math.floor(Math.random() * defs.length)];
+
+  const activeLocs = state.data.locations.filter((l) => !l.disabled);
+  const locationsWithAgents = activeLocs.filter((l) =>
+    state.runtime.personnel.some(
+      (p) =>
+        p.locationId === l.id &&
+        !["killed", "captured", "mia", "traveling"].includes(p.status),
+    ),
+  );
+  const candidateLocs = locationsWithAgents.length > 0 ? locationsWithAgents : activeLocs;
+  const locationId =
+    candidateLocs.length > 0
+      ? candidateLocs[Math.floor(Math.random() * candidateLocs.length)].id
+      : state.runtime.headquartersId;
+
+  const newPending: NarrativePending = {
+    id: `narrative-${now}-${def.id}`,
+    eventId: def.id,
+    locationId,
+    triggeredAtHours: now,
+    expiresAtHours: now + windowHours,
+  };
+
+  return {
+    ...state,
+    runtime: { ...state.runtime, narrativePending: [...active, newPending] },
+  };
+};
+
+export const resolveNarrativeChoice = (
+  state: GameState,
+  pendingId: string,
+  choiceId: string,
+  success = true,
+): GameState => {
+  const pending = state.runtime.narrativePending ?? [];
+  const item = pending.find((p) => p.id === pendingId);
+  if (!item) return state;
+
+  const defs = (narrativeEventsData as { events: NarrativeEventDef[] }).events;
+  const def = defs.find((d) => d.id === item.eventId);
+  if (!def) return state;
+
+  const choice = def.choices.find((c) => c.id === choiceId);
+  if (!choice) return state;
+
+  const appliedOutcomes: NarrativeOutcome[] = success
+    ? (choice.outcomes as NarrativeOutcome[])
+    : ((choice as { failureOutcomes?: NarrativeOutcome[] }).failureOutcomes ?? []);
+
+  let nextState = state;
+
+  for (const outcome of appliedOutcomes) {
+    if (outcome.type === "resources") {
+      nextState = {
+        ...nextState,
+        runtime: {
+          ...nextState.runtime,
+          resources: {
+            credits: nextState.runtime.resources.credits + (outcome.credits ?? 0),
+            intel: Math.max(0, nextState.runtime.resources.intel + (outcome.intel ?? 0)),
+          },
+        },
+      };
+    } else if (outcome.type === "material") {
+      const existing = nextState.runtime.materials.find((m) => m.id === outcome.materialId);
+      const materials = existing
+        ? nextState.runtime.materials.map((m) =>
+            m.id === outcome.materialId
+              ? { ...m, quantity: Math.max(0, m.quantity + outcome.quantity) }
+              : m,
+          )
+        : outcome.quantity > 0
+          ? [
+              ...nextState.runtime.materials,
+              { id: outcome.materialId, name: outcome.materialId, quantity: outcome.quantity },
+            ]
+          : nextState.runtime.materials;
+      nextState = { ...nextState, runtime: { ...nextState.runtime, materials } };
+    } else if (outcome.type === "location-attribute") {
+      const locations = nextState.data.locations.map((l) =>
+        l.id === item.locationId
+          ? {
+              ...l,
+              attributes: {
+                ...l.attributes,
+                [outcome.key]: Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    (l.attributes as unknown as Record<string, number>)[outcome.key] + outcome.delta,
+                  ),
+                ),
+              },
+            }
+          : l,
+      );
+      nextState = { ...nextState, data: { ...nextState.data, locations } };
+    }
+  }
+
+  const hasRisk = (choice as { successChance?: number }).successChance != null;
+  const logEntry: NarrativeEventLog = {
+    id: `${pendingId}-resolved`,
+    kind: "narrative",
+    eventId: item.eventId,
+    choiceId,
+    locationId: item.locationId,
+    resolvedAtHours: nextState.runtime.nowHours,
+    outcomes: appliedOutcomes,
+    ...(hasRisk && { choiceSuccess: success }),
+  };
+
+  return {
+    ...nextState,
+    runtime: {
+      ...nextState.runtime,
+      narrativePending: (nextState.runtime.narrativePending ?? []).filter(
+        (p) => p.id !== pendingId,
+      ),
+      eventLog: [...nextState.runtime.eventLog, logEntry],
+    },
+  };
+};
+
+/** Returns a difficulty multiplier (1.0–2.0) that grows with game time and player threat level. */
+const getDifficultyScaleFactor = (state: GameState): number => {
+  const bal = balance as unknown as Record<string, number>;
+  const maxHours = bal.difficultyScaleMaxHours ?? 2000;
+  const maxFactor = bal.difficultyScaleMaxFactor ?? 2.0;
+  const supportWeight = bal.difficultyScalePopularSupportWeight ?? 0.5;
+
+  const timeFactor = Math.min(1, state.runtime.nowHours / maxHours);
+
+  const activeLocs = state.data.locations.filter((l) => !l.disabled);
+  const avgSupport = activeLocs.length > 0
+    ? activeLocs.reduce((s, l) => s + l.attributes.popularSupport, 0) / activeLocs.length
+    : 0;
+  const supportFactor = avgSupport / 100;
+
+  const raw = timeFactor * (1 - supportWeight) + supportFactor * supportWeight;
+  return 1 + raw * (maxFactor - 1);
+};
+
+const tickEnemyActivity = (state: GameState): GameState => {
+  const now = state.runtime.nowHours;
+  const bal = balance as unknown as Record<string, number>;
+  const baseInterval = bal.enemyActionIntervalBaseHours ?? 48;
+  const variance = bal.enemyActionIntervalVarianceHours ?? 24;
+  const speedFactor = bal.enemyActionGarrisonSpeedFactor ?? 0.4;
+  const scaleFactor = getDifficultyScaleFactor(state);
+  const patrolInc = Math.round((bal.enemyPatrolIncrease ?? 5) * scaleFactor);
+  const supportDec = Math.round((bal.enemySupportDecrease ?? 5) * scaleFactor);
+
+  let nextState = state;
+
+  for (const location of state.data.locations) {
+    if (location.disabled) continue;
+
+    const truth = getLocationTruth(nextState, location.id);
+
+    // Initialize timer on first encounter
+    const nextActionHours =
+      truth.nextEnemyActionHours ??
+      now + Math.random() * baseInterval;
+
+    if (now < nextActionHours) continue;
+
+    const action = pickEnemyAction(nextState, location.id);
+    const result = applyEnemyAction(nextState, location, action, now, patrolInc, supportDec);
+    nextState = result.state;
+
+    // Schedule next action — higher garrison and difficulty = shorter interval
+    const nextInterval = Math.max(
+      12,
+      (baseInterval / scaleFactor) - location.attributes.garrisonStrength * speedFactor + Math.random() * variance,
+    );
+    nextState = setLocationTruthRuntime(nextState, location.id, {
+      ...getLocationTruth(nextState, location.id),
+      nextEnemyActionHours: now + nextInterval,
+    });
+
+    // Intel-gate strategic events; arrest and counter-op are always visible
+    if (result.event) {
+      const hasIntel =
+        Object.keys(nextState.runtime.knowledge?.byLocation?.[location.id] ?? {}).length > 0;
+      const alwaysVisible = action === "arrest" || action === "counter-op";
+      if (hasIntel || alwaysVisible) {
+        nextState = {
+          ...nextState,
+          runtime: {
+            ...nextState.runtime,
+            eventLog: [...nextState.runtime.eventLog, result.event],
+          },
+        };
+      }
+    }
+  }
+
+  return nextState;
+};
+
+/** Checks victory/defeat conditions and returns updated state if phase changed. */
+const checkGamePhase = (state: GameState): GameState => {
+  // Don't re-check if already ended
+  if (state.runtime.phase && state.runtime.phase !== "active") return state;
+
+  // Defeat: all personnel gone (only if roster is non-empty)
+  if (state.runtime.personnel.length > 0) {
+    const allGone = state.runtime.personnel.every(
+      (p) => p.status === "killed" || p.status === "captured" || p.status === "mia",
+    );
+    if (allGone) {
+      return {
+        ...state,
+        runtime: { ...state.runtime, phase: "defeat", phaseReason: "all-agents-gone" },
+      };
+    }
+  }
+
+  // Defeat: HQ popular support at 0
+  const hq = state.data.locations.find((l) => l.id === state.runtime.headquartersId);
+  if (hq && hq.attributes.popularSupport <= 0) {
+    return {
+      ...state,
+      runtime: { ...state.runtime, phase: "defeat", phaseReason: "hq-lost" },
+    };
+  }
+
+  // Victory: average popular support across enabled locations
+  const activeLocs = state.data.locations.filter((l) => !l.disabled);
+  if (activeLocs.length > 0) {
+    const avg =
+      activeLocs.reduce((s, l) => s + l.attributes.popularSupport, 0) / activeLocs.length;
+    const threshold =
+      (balance as { victoryPopularSupportThreshold?: number }).victoryPopularSupportThreshold ?? 90;
+    if (avg >= threshold) {
+      return {
+        ...state,
+        runtime: { ...state.runtime, phase: "victory", phaseReason: "popular-support" },
+      };
+    }
+  }
+
+  return state;
+};
 

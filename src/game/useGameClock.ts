@@ -28,7 +28,7 @@ export const useGameClock = ({
     });
     const interval = setInterval(() => {
       setState((prev) => {
-        if (isPaused) {
+        if (isPaused || (prev.runtime.phase && prev.runtime.phase !== "active")) {
           return prev;
         }
         const hoursToAdvance = accumulatorRef.current.tick(prev.runtime.nowHours);

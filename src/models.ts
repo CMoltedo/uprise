@@ -42,6 +42,8 @@ export interface LocationTruth {
   populationDensity?: number;
   popularSupport?: number;
   healthcareFacilities?: number;
+  /** When the next enemy action fires at this location (game hours). */
+  nextEnemyActionHours?: number;
 }
 
 export interface IntelSnapshot {
@@ -79,6 +81,8 @@ export interface Personnel {
   /** Set when status becomes killed; optional for memorial/event display. */
   killedAtHours?: number;
   killedMissionId?: string;
+  /** 0–100 morale score. Absent on old saves = 50 (neutral). */
+  morale?: number;
   roleLevels?: Partial<Record<PersonnelRole, number>>;
 }
 
@@ -165,8 +169,10 @@ export interface MissionPlan {
   summary: string;
   type: MissionType;
   availability?: MissionAvailability;
+  persistent?: boolean;
   requiredRoles: PersonnelRole[];
   requiredMaterials?: MissionMaterialRequirement[];
+  creditsCost?: number;
   durationHours: number;
   baseSuccessChance: number;
   rewards?: MissionRewardBundle;
@@ -192,6 +198,8 @@ export interface MissionInstance {
   status: MissionStatus;
   remainingHours: number;
   startedAtHours: number;
+  /** Set by enemy counter-op; reduces success chance at resolution. */
+  enemyCounterOp?: boolean;
 }
 
 export interface LocationAssignment {
@@ -210,7 +218,72 @@ export interface MissionOffer {
   expiresAtHours: number;
 }
 
-export type EventKind = "mission" | "travel";
+export type NarrativeOutcome =
+  | { type: "resources"; credits?: number; intel?: number }
+  | { type: "material"; materialId: string; quantity: number }
+  | { type: "location-attribute"; key: string; delta: number }
+  | { type: "nothing" };
+
+export interface NarrativeChoice {
+  id: string;
+  label: string;
+  flavor: string;
+  outcomes: NarrativeOutcome[];
+  /** 0–1 chance the choice succeeds; absent means always succeeds. */
+  successChance?: number;
+  /** Outcomes applied when the roll fails; defaults to no effect. */
+  failureOutcomes?: NarrativeOutcome[];
+}
+
+export interface NarrativeEventDef {
+  id: string;
+  category: "windfall" | "threat" | "opportunity" | "complication";
+  title: string;
+  body: string;
+  choices: NarrativeChoice[];
+  weight?: number;
+}
+
+export interface NarrativePending {
+  id: string;
+  eventId: string;
+  locationId: string;
+  triggeredAtHours: number;
+  expiresAtHours: number;
+}
+
+export interface NarrativeEventLog {
+  id: string;
+  kind: "narrative";
+  eventId: string;
+  choiceId: string;
+  locationId: string;
+  resolvedAtHours: number;
+  outcomes: NarrativeOutcome[];
+  /** Present when the choice had a successChance roll: true = succeeded, false = failed. */
+  choiceSuccess?: boolean;
+}
+
+export type EventKind = "mission" | "travel" | "enemy-action" | "narrative";
+
+export type EnemyActionKind =
+  | "patrol-increase"
+  | "propaganda"
+  | "arrest"
+  | "counter-op";
+
+export interface EnemyActionEvent {
+  id: string;
+  kind: "enemy-action";
+  locationId: string;
+  action: EnemyActionKind;
+  atHours: number;
+  /** Present for arrest: the captured personnel id. */
+  personnelId?: string;
+  /** Present for counter-op: the targeted mission id. */
+  missionId?: string;
+}
+
 
 export interface MissionEvent {
   id: string;
@@ -228,6 +301,15 @@ export interface MissionEvent {
   traitGained?: Array<{ personnelId: string; traitId: string }>;
   /** For successful recruit-allies missions: ids of newly recruited personnel. */
   recruitedPersonnelIds?: string[];
+  /** For rescue/search missions: ids of personnel successfully freed or found. */
+  rescuedPersonnelIds?: string[];
+  /** For rescue/search missions: what happened to target personnel when the mission failed. */
+  targetAdverseOutcomes?: Array<{
+    personnelId: string;
+    outcome: "moved" | "executed";
+    /** Present when outcome === "moved": the new location id. */
+    newLocationId?: string;
+  }>;
 }
 
 export interface TravelEvent {
@@ -239,9 +321,11 @@ export interface TravelEvent {
   status: "started" | "arrived";
   atHours: number;
   travelHours?: number;
+  /** Present on arrival if a hazard was encountered en route. */
+  hazard?: "wounded" | "captured";
 }
 
-export type EventLogEntry = MissionEvent | TravelEvent;
+export type EventLogEntry = MissionEvent | TravelEvent | EnemyActionEvent | NarrativeEventLog;
 
 export interface TravelAssignment {
   id: string;
@@ -281,6 +365,11 @@ export interface GameRuntime {
   locationTruth?: Record<string, LocationTruth>;
   knowledge?: PlayerKnowledge;
   trainingAttemptsWithoutGain?: Record<string, Record<string, number>>;
+  narrativePending?: NarrativePending[];
+  /** "active" while running; "victory" or "defeat" when the game ends. Absent on old saves = active. */
+  phase?: "active" | "victory" | "defeat";
+  /** Short key describing why the game ended, for display. */
+  phaseReason?: "popular-support" | "all-agents-gone" | "hq-lost";
 }
 
 export interface GameState {
